@@ -1,6 +1,9 @@
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.IO;
+using System.IO.Ports;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using System.Net.Http.Headers;
 using System.Windows.Threading;
@@ -150,7 +153,8 @@ public partial class MainWindow : Window
             _checkoutQueue.Remove(idempotencyKey);
             _checkoutPending = false;
             _currentQuote = null;
-            MessageLabel.Text = $"Pembayaran {result.TotalFee.ToString("C0", new System.Globalization.CultureInfo("id-ID"))} selesai. Status {result.PaymentStatus}. Integrasikan cetak struk dan relay pada perangkat pos.";
+            var deviceStatus = await CompleteExitHardwareAsync(result);
+            MessageLabel.Text = $"Pembayaran {result.TotalFee.ToString("C0", new System.Globalization.CultureInfo("id-ID"))} selesai. {deviceStatus}";
         }
         catch (HttpRequestException exception)
         {
@@ -340,6 +344,12 @@ public partial class MainWindow : Window
                     break;
                 }
 
+                var result = await response.Content.ReadFromJsonAsync<CheckoutResponse>(JsonOptions);
+                if (result is null)
+                {
+                    break;
+                }
+
                 _checkoutQueue.Remove(pending.IdempotencyKey);
                 if (_currentQuote?.TicketId == pending.TicketId)
                 {
@@ -347,7 +357,8 @@ public partial class MainWindow : Window
                     _currentQuote = null;
                     CheckoutButton.IsEnabled = false;
                 }
-                MessageLabel.Text = $"Checkout {pending.TicketId} berhasil disinkronkan. Server mengonfirmasi transaksi.";
+                var deviceStatus = await CompleteExitHardwareAsync(result);
+                MessageLabel.Text = $"Checkout {pending.TicketId} dikonfirmasi server. {deviceStatus}";
             }
         }
         catch (HttpRequestException)
@@ -358,6 +369,120 @@ public partial class MainWindow : Window
             _isSyncingQueue = false;
             UpdateConnectionLabel();
         }
+    }
+
+    private static async Task<string> CompleteExitHardwareAsync(CheckoutResponse result)
+    {
+        var statuses = new List<string>();
+        var printerHost = Environment.GetEnvironmentVariable("PARKIR_RECEIPT_HOST");
+        if (string.IsNullOrWhiteSpace(printerHost))
+        {
+            statuses.Add("Printer belum dikonfigurasi.");
+        }
+        else
+        {
+            try
+            {
+                var printerPort = int.TryParse(Environment.GetEnvironmentVariable("PARKIR_RECEIPT_PORT"), out var configuredPort)
+                    ? configuredPort
+                    : 9100;
+                await PrintReceiptAsync(printerHost, printerPort, result);
+                statuses.Add("Struk tercetak.");
+            }
+            catch (Exception exception) when (
+                exception is IOException or SocketException or ArgumentOutOfRangeException or OperationCanceledException)
+            {
+                statuses.Add("Cetak struk gagal; cek printer.");
+            }
+        }
+
+        var relayPortName = Environment.GetEnvironmentVariable("PARKIR_RELAY_PORT");
+        var relayCommand = Environment.GetEnvironmentVariable("PARKIR_RELAY_OPEN_HEX");
+        if (string.IsNullOrWhiteSpace(relayPortName) || string.IsNullOrWhiteSpace(relayCommand))
+        {
+            statuses.Add("Palang tidak dikonfigurasi; lakukan pembukaan manual.");
+        }
+        else
+        {
+            try
+            {
+                var baudRate = int.TryParse(Environment.GetEnvironmentVariable("PARKIR_RELAY_BAUD"), out var configuredBaudRate)
+                    ? configuredBaudRate
+                    : 9600;
+                await Task.Run(() => SendRelayCommand(relayPortName, baudRate, relayCommand));
+                statuses.Add("Perintah buka palang terkirim.");
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or ArgumentException or FormatException or
+                    InvalidOperationException or TimeoutException)
+            {
+                statuses.Add("Relay gagal; lakukan pembukaan manual.");
+            }
+        }
+
+        return string.Join(" ", statuses);
+    }
+
+    private static async Task PrintReceiptAsync(string host, int port, CheckoutResponse result)
+    {
+        if (port is < 1 or > 65535)
+        {
+            throw new ArgumentOutOfRangeException(nameof(port));
+        }
+
+        using var client = new TcpClient();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        await client.ConnectAsync(host, port, timeout.Token);
+        await using var stream = client.GetStream();
+        using var receipt = new MemoryStream();
+        receipt.Write(new byte[] { 0x1B, 0x40, 0x1B, 0x61, 0x01, 0x1B, 0x45, 0x01 });
+        WriteReceiptText(receipt, "PARKIR - STRUK\n");
+        receipt.Write(new byte[] { 0x1B, 0x45, 0x00, 0x1B, 0x61, 0x00 });
+        WriteReceiptText(receipt, "------------------------------\n");
+        WriteReceiptText(receipt, $"Tiket   : {result.TicketId}\n");
+        WriteReceiptText(receipt, $"Durasi  : {result.DurationMinutes} menit\n");
+        WriteReceiptText(receipt, $"Status  : {result.PaymentStatus}\n");
+        WriteReceiptText(receipt, $"Keluar  : {result.TimeOut.LocalDateTime:yyyy-MM-dd HH:mm:ss}\n");
+        WriteReceiptText(receipt, $"Denda   : Rp {result.PenaltyFee:N0}\n");
+        receipt.Write(new byte[] { 0x1B, 0x45, 0x01 });
+        WriteReceiptText(receipt, $"TOTAL   : Rp {result.TotalFee:N0}\n");
+        receipt.Write(new byte[] { 0x1B, 0x45, 0x00 });
+        WriteReceiptText(receipt, "Terima kasih\n\n\n");
+        receipt.Write(new byte[] { 0x1D, 0x56, 0x41, 0x10 });
+        await stream.WriteAsync(receipt.ToArray(), timeout.Token);
+        await stream.FlushAsync(timeout.Token);
+    }
+
+    private static void WriteReceiptText(Stream destination, string text)
+    {
+        var bytes = Encoding.ASCII.GetBytes(text);
+        destination.Write(bytes, 0, bytes.Length);
+    }
+
+    private static void SendRelayCommand(string portName, int baudRate, string commandHex)
+    {
+        if (baudRate is < 300 or > 1_000_000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(baudRate));
+        }
+
+        var byteTokens = commandHex.Split(new[] { ' ', ',', ':', '-' }, StringSplitOptions.RemoveEmptyEntries);
+        if (byteTokens.Length == 0)
+        {
+            throw new ArgumentException("Relay command kosong.", nameof(commandHex));
+        }
+
+        var command = byteTokens.Select(token => byte.Parse(token, System.Globalization.NumberStyles.HexNumber,
+            System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        using var serialPort = new SerialPort(portName, baudRate, Parity.None, 8, StopBits.One)
+        {
+            WriteTimeout = 1000,
+            DtrEnable = false,
+            RtsEnable = false
+        };
+        serialPort.Open();
+        serialPort.Write(command, 0, command.Length);
+        serialPort.BaseStream.Flush();
     }
 
     private static Task<HttpResponseMessage> SendCheckoutAsync(PendingCheckout pending)
