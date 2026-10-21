@@ -1,0 +1,123 @@
+<Window x:Class="Parkir.Pos.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Parkir | Pos Keluar" Height="760" Width="980"
+        MinHeight="680" MinWidth="820" Background="{StaticResource Canvas}"
+        Foreground="{StaticResource Ink}" FontFamily="Segoe UI"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0" Margin="0,0,0,24">
+            <StackPanel>
+                <TextBlock Text="PARKIR / OPERASIONAL" FontSize="12" FontWeight="Bold"
+                           Foreground="{StaticResource Accent}" />
+                <TextBlock Text="Pos keluar" FontSize="28" FontWeight="SemiBold" />
+            </StackPanel>
+            <TextBlock x:Name="ConnectionLabel" DockPanel.Dock="Right" VerticalAlignment="Center"
+                       Text="API lokal" Foreground="{StaticResource Muted}" />
+        </DockPanel>
+
+        <Grid Grid.Row="1" Margin="0,0,0,18">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="TicketInput" Grid.Column="0" VerticalContentAlignment="Center"
+                     ToolTip="Scan barcode atau masukkan nomor tiket"
+                     KeyDown="TicketInput_KeyDown" />
+            <Button Grid.Column="1" Margin="10,0,0,0" Content="Cari tiket" Click="Quote_Click"
+                    Background="{StaticResource Ink}" Foreground="White" BorderThickness="0" />
+        </Grid>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.15*" />
+                <ColumnDefinition Width="18" />
+                <ColumnDefinition Width="0.85*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="White" BorderBrush="#DDE4DE" BorderThickness="1" Padding="22">
+                <StackPanel>
+                    <TextBlock Text="RINGKASAN PARKIR" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource Muted}" />
+                    <TextBlock x:Name="TicketLabel" Text="Belum ada tiket" FontSize="21"
+                               FontWeight="SemiBold" Margin="0,10,0,20" />
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="Durasi" Foreground="{StaticResource Muted}" />
+                        <TextBlock x:Name="DurationLabel" Grid.Column="1" Text="-" FontWeight="SemiBold" />
+                    </Grid>
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="Status" Foreground="{StaticResource Muted}" />
+                        <TextBlock x:Name="MemberLabel" Grid.Column="1" Text="-" FontWeight="SemiBold" />
+                    </Grid>
+                    <TextBlock Text="VERIFIKASI VISUAL" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource Muted}" Margin="0,10,0,8" />
+                    <Grid Height="142">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="FOTO MASUK" FontSize="10" FontWeight="Bold"
+                                       Foreground="{StaticResource Muted}" Margin="0,0,0,5" />
+                            <Border Height="118" Background="#EEF2EE" BorderBrush="#DDE4DE" BorderThickness="1">
+                                <Image x:Name="EntryPhotoImage" Stretch="Uniform" />
+                            </Border>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="FOTO KELUAR" FontSize="10" FontWeight="Bold"
+                                       Foreground="{StaticResource Muted}" Margin="0,0,0,5" />
+                            <Border Height="118" Background="#EEF2EE" BorderBrush="#DDE4DE" BorderThickness="1">
+                                <Image x:Name="ExitPhotoImage" Stretch="Uniform" />
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                    <Button x:Name="CapturePhotoButton" Content="Ambil foto keluar" Margin="0,9,0,0"
+                            Click="CapturePhoto_Click" IsEnabled="False" HorizontalAlignment="Left"
+                            Background="Transparent" BorderBrush="#DDE4DE" />
+                    <Separator Margin="0,10" />
+                    <TextBlock Text="TOTAL TAGIHAN" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource Muted}" />
+                    <TextBlock x:Name="FeeLabel" Text="Rp 0" FontSize="34" FontWeight="Bold"
+                               Foreground="{StaticResource Accent}" Margin="0,3,0,0" />
+                    <TextBlock x:Name="MessageLabel" Text="Scan tiket untuk memulai."
+                               TextWrapping="Wrap" Margin="0,20,0,0" Foreground="{StaticResource Muted}" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="2" Background="White" BorderBrush="#DDE4DE" BorderThickness="1" Padding="22">
+                <StackPanel>
+                    <TextBlock Text="PENYELESAIAN" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource Muted}" Margin="0,0,0,18" />
+                    <TextBlock Text="Metode pembayaran" Margin="0,0,0,7" />
+                    <ComboBox x:Name="PaymentMethod" Height="40" Padding="8" SelectedIndex="0">
+                        <ComboBoxItem Content="CASH" />
+                        <ComboBoxItem Content="QRIS" />
+                        <ComboBoxItem Content="DEBIT" />
+                    </ComboBox>
+                    <CheckBox x:Name="LostTicketCheck" Content="Karcis hilang" Margin="0,20,0,9"
+                              Checked="LostTicketCheck_Changed" Unchecked="LostTicketCheck_Changed" />
+                    <CheckBox x:Name="IdentityVerifiedCheck" Content="Identitas sudah diverifikasi"
+                              IsEnabled="False" />
+                    <Button x:Name="CheckoutButton" Content="Bayar dan tutup tiket" Margin="0,24,0,0"
+                            Click="Checkout_Click" Background="{StaticResource Accent}" Foreground="White"
+                            BorderThickness="0" IsEnabled="False" />
+                    <Button Content="Tiket baru" Margin="0,8,0,0" Click="NewTicket_Click"
+                            Background="Transparent" BorderBrush="#DDE4DE" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <TextBlock Grid.Row="3" Margin="0,16,0,0" Text="Kasir LAN  ·  Pastikan kendaraan dan tiket sudah diverifikasi sebelum palang dibuka."
+                   Foreground="{StaticResource Muted}" FontSize="12" />
+    </Grid>
+</Window>

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#153c35">
+    <title>Parkir | Manajemen</title>
+    <link rel="stylesheet" href="/app.css">
+    <script src="/app.js" defer></script>
+</head>
+<body>
+    <section id="login-view" class="login-shell">
+        <div class="login-aside">
+            <div class="brand-mark">P<span>.</span></div>
+            <p class="eyebrow">SISTEM PARKIR LAN</p>
+            <h1>Manajemen<br>area parkir.</h1>
+            <p class="login-note">Ringkasan operasional, tarif, dan data member dalam satu panel lokal.</p>
+            <div class="login-status"><i></i> SERVER LOKAL</div>
+        </div>
+        <form id="login-form" class="login-form">
+            <p class="eyebrow">AKSES PENGELOLA</p>
+            <h2>Selamat datang</h2>
+            <p class="muted">Masuk dengan akun administrator.</p>
+            <label for="login-username">Username</label>
+            <input id="login-username" name="username" autocomplete="username" required>
+            <label for="login-password">Password</label>
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+            <button class="button primary login-button" type="submit">Masuk ke dashboard</button>
+            <p id="login-message" class="message" role="status"></p>
+        </form>
+    </section>
+
+    <div id="app-view" class="app-shell" hidden>
+        <aside class="sidebar">
+            <a class="brand" href="#dashboard" aria-label="Parkir, ringkasan">
+                <span class="brand-mark small">P<span>.</span></span>
+                <span>PARKIR<small>OPERASIONAL</small></span>
+            </a>
+            <p class="nav-caption">PENGELOLAAN</p>
+            <nav aria-label="Navigasi utama">
+                <button class="nav-item active" data-view="dashboard" type="button"><span>01</span> Ringkasan</button>
+                <button class="nav-item" data-view="tariffs" type="button"><span>02</span> Tarif kendaraan</button>
+                <button class="nav-item" data-view="members" type="button"><span>03</span> Member</button>
+                   <button class="nav-item" data-view="reports" type="button"><span>04</span> Laporan</button>
+            </nav>
+            <div class="sidebar-bottom">
+                <div class="connection"><i></i><span>Server lokal</span></div>
+                <button id="logout-button" class="logout-button" type="button">Keluar</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="topbar">
+                <div>
+                    <p id="page-kicker" class="eyebrow">IKHTISAR HARI INI</p>
+                    <h1 id="page-title">Ringkasan</h1>
+                </div>
+                <div class="top-meta">
+                    <span id="today-label"></span>
+                    <span id="admin-name" class="admin-name"></span>
+                </div>
+            </header>
+
+            <div id="app-message" class="app-message" role="status" hidden></div>
+
+            <section id="dashboard-view" class="view-panel">
+                <div class="section-heading">
+                    <div><h2>Operasional hari ini</h2><p>Data diperbarui otomatis setiap 30 detik.</p></div>
+                    <button id="refresh-button" class="button subtle" type="button">Perbarui</button>
+                </div>
+                <div class="metric-grid">
+                    <article class="metric revenue"><p>PENDAPATAN HARI INI</p><strong id="revenue-value">-</strong><span>Transaksi berbayar</span></article>
+                    <article class="metric"><p>KENDARAAN DI DALAM</p><strong id="inside-value">-</strong><span>Kapasitas aktif</span></article>
+                    <article class="metric"><p>KENDARAAN MASUK</p><strong id="entries-value">-</strong><span>Sejak pergantian hari</span></article>
+                    <article class="metric"><p>KENDARAAN KELUAR</p><strong id="exits-value">-</strong><span>Sejak pergantian hari</span></article>
+                </div>
+                <div class="summary-band">
+                    <div><span class="summary-dot"></span><div><strong>Data tersimpan terpusat</strong><p>Panel tersambung ke server parkir pada jaringan lokal.</p></div></div>
+                    <span id="last-updated">Belum diperbarui</span>
+                </div>
+            </section>
+
+               <section id="reports-view" class="view-panel" hidden>
+                   <div class="section-heading">
+                       <div><h2>Laporan operasional</h2><p>Rekap kendaraan dan pendapatan per hari.</p></div>
+                   </div>
+                   <form id="report-form" class="report-filters">
+                       <label>Dari tanggal<input id="report-from" name="from" type="date" required></label>
+                       <label>Sampai tanggal<input id="report-to" name="to" type="date" required></label>
+                       <button class="button primary" type="submit">Tampilkan laporan</button>
+                       <button id="export-report-button" class="button subtle" type="button">Unduh CSV</button>
+                   </form>
+                   <div class="report-totals">
+                       <article class="metric revenue"><p>PENDAPATAN</p><strong id="report-revenue">-</strong></article>
+                       <article class="metric"><p>KENDARAAN MASUK</p><strong id="report-entries">-</strong></article>
+                       <article class="metric"><p>KENDARAAN KELUAR</p><strong id="report-exits">-</strong></article>
+                   </div>
+                   <div class="table-wrap report-table">
+                       <table><thead><tr><th>Tanggal</th><th>Masuk</th><th>Keluar</th><th>Pendapatan</th></tr></thead>
+                       <tbody id="report-rows"></tbody></table>
+                       <p id="report-empty" class="empty-state" hidden>Tidak ada data pada rentang tanggal ini.</p>
+                   </div>
+               </section>
+
+            <section id="tariffs-view" class="view-panel" hidden>
+                <div class="section-heading">
+                    <div><h2>Tarif kendaraan</h2><p>Atur tarif per jenis kendaraan.</p></div>
+                    <button id="add-tariff-button" class="button primary" type="button">Tambah tarif</button>
+                </div>
+                <div class="table-wrap">
+                    <table><thead><tr><th>Jenis</th><th>Jam pertama</th><th>Per jam berikutnya</th><th>Grace period</th><th>Denda hilang</th><th>Maks. harian</th><th></th></tr></thead>
+                    <tbody id="tariff-rows"></tbody></table>
+                    <p id="tariff-empty" class="empty-state" hidden>Belum ada jenis kendaraan.</p>
+                </div>
+            </section>
+
+            <section id="members-view" class="view-panel" hidden>
+                <div class="section-heading">
+                    <div><h2>Member</h2><p>Daftarkan kartu RFID dan kelola masa aktif.</p></div>
+                    <button id="add-member-button" class="button primary" type="button">Tambah member</button>
+                </div>
+                <div class="table-wrap">
+                    <table><thead><tr><th>Nama</th><th>Plat nomor</th><th>Kartu RFID</th><th>Kendaraan</th><th>Berlaku sampai</th><th>Status</th></tr></thead>
+                    <tbody id="member-rows"></tbody></table>
+                    <p id="member-empty" class="empty-state" hidden>Belum ada member terdaftar.</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <dialog id="tariff-dialog" class="dialog">
+        <form id="tariff-form" class="dialog-form">
+            <div class="dialog-heading"><div><p class="eyebrow">KONFIGURASI</p><h2 id="tariff-dialog-title">Tambah tarif</h2></div><button class="icon-close" type="button" data-close="tariff-dialog" aria-label="Tutup">×</button></div>
+            <input name="id" type="hidden">
+            <label>Jenis kendaraan<input name="typeName" maxlength="50" required></label>
+            <div class="form-grid">
+                <label>Tarif jam pertama<input name="firstHourRate" type="number" min="0" step="500" required></label>
+                <label>Per jam berikutnya<input name="hourlyRate" type="number" min="0" step="500" required></label>
+                <label>Grace period (menit)<input name="gracePeriodMinutes" type="number" min="0" step="1" value="5" required></label>
+                <label>Denda tiket hilang<input name="lostTicketFee" type="number" min="0" step="500" required></label>
+                <label>Maksimum harian<input name="maxDailyRate" type="number" min="0" step="500" required></label>
+            </div>
+            <div class="dialog-actions"><button class="button subtle" type="button" data-close="tariff-dialog">Batal</button><button class="button primary" type="submit">Simpan tarif</button></div>
+        </form>
+    </dialog>
+
+    <dialog id="member-dialog" class="dialog">
+        <form id="member-form" class="dialog-form">
+            <div class="dialog-heading"><div><p class="eyebrow">DATA LANGGANAN</p><h2>Tambah member</h2></div><button class="icon-close" type="button" data-close="member-dialog" aria-label="Tutup">×</button></div>
+            <label>Nama pemilik<input name="fullName" maxlength="100" required></label>
+            <div class="form-grid">
+                <label>UID RFID<input name="rfidUid" maxlength="100" required></label>
+                <label>Plat nomor<input name="licensePlate" maxlength="20" required></label>
+                <label>Jenis kendaraan<select name="vehicleTypeId" required></select></label>
+                <label>Berlaku sampai<input name="expiredDate" type="date" required></label>
+            </div>
+            <div class="dialog-actions"><button class="button subtle" type="button" data-close="member-dialog">Batal</button><button class="button primary" type="submit">Simpan member</button></div>
+        </form>
+    </dialog>
+</body>
+</html>
