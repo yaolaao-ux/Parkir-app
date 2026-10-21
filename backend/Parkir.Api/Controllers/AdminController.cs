@@ -17,6 +17,10 @@ public sealed class AdminController(AdminService adminService) : ControllerBase
     public async Task<ActionResult<DashboardSummary>> GetDashboard(CancellationToken cancellationToken) =>
         Ok(await adminService.GetDashboardAsync(cancellationToken));
 
+    [HttpGet("devices")]
+    public async Task<ActionResult<IReadOnlyList<DeviceStatusDto>>> GetDevices(CancellationToken cancellationToken) =>
+        Ok(await adminService.GetDeviceStatusesAsync(cancellationToken));
+
     [HttpGet("reports")]
     public async Task<ActionResult<ParkingReport>> GetReport(
         [FromQuery] DateOnly from,

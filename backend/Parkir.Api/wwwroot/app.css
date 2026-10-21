@@ -90,6 +90,15 @@ nav { display: grid; gap: 5px; }
 .summary-band p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
 .summary-band > span { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .summary-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); }
+.device-panel { margin-top: 30px; }
+.device-panel .section-heading { margin-bottom: 13px; }
+.device-panel .section-heading h2 { font-size: 22px; }
+.device-status { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 800; }
+.device-status::before { width: 8px; height: 8px; border-radius: 50%; content: ""; }
+.device-status.online { color: var(--green); }
+.device-status.online::before { background: #2a9b68; box-shadow: 0 0 0 3px #2a9b6822; }
+.device-status.offline { color: var(--red); }
+.device-status.offline::before { background: #b34d48; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); background: var(--paper); }
 table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
 th { padding: 12px 14px; color: var(--muted); background: #f7f9f6; font-size: 10px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; }

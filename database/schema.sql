@@ -44,6 +44,17 @@ CREATE TABLE audit_logs (
 CREATE INDEX ix_audit_logs_created_at ON audit_logs (created_at DESC);
 CREATE INDEX ix_audit_logs_actor_action ON audit_logs (actor_user_id, action, created_at DESC);
 
+CREATE TABLE devices (
+    device_id VARCHAR(50) PRIMARY KEY,
+    device_type VARCHAR(30) NOT NULL CHECK (device_type IN ('GATE_IN', 'CASHIER_POS')),
+    display_name VARCHAR(100) NOT NULL,
+    firmware_version VARCHAR(50),
+    ip_address INET,
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX ix_devices_last_seen ON devices (last_seen DESC);
+
 CREATE TABLE transactions (
     ticket_id VARCHAR(50) PRIMARY KEY,
     vehicle_type_id BIGINT NOT NULL REFERENCES vehicle_types(id),

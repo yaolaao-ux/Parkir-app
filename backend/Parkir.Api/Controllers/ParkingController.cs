@@ -89,3 +89,23 @@ public sealed class ParkingController(ParkingService parkingService) : Controlle
         CancellationToken cancellationToken) =>
         Ok(await parkingService.VerifyMemberAsync(rfidUid, cancellationToken));
 }
+
+[ApiController]
+[Route("api/devices")]
+public sealed class DeviceController(AdminService adminService) : ControllerBase
+{
+    [HttpPost("heartbeat")]
+    public async Task<IActionResult> Heartbeat(DeviceHeartbeatRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await adminService.RecordDeviceHeartbeatAsync(
+                request, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            return NoContent();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+}

@@ -118,12 +118,34 @@ async function loadCurrentView() {
 }
 
 async function loadDashboard() {
-    const data = await api("/api/admin/dashboard");
+    const [data, devices] = await Promise.all([
+        api("/api/admin/dashboard"),
+        api("/api/admin/devices")
+    ]);
     document.querySelector("#revenue-value").textContent = money.format(data.revenueToday);
     document.querySelector("#inside-value").textContent = data.vehiclesInside.toLocaleString("id-ID");
     document.querySelector("#entries-value").textContent = data.entriesToday.toLocaleString("id-ID");
     document.querySelector("#exits-value").textContent = data.exitsToday.toLocaleString("id-ID");
     document.querySelector("#last-updated").textContent = `Diperbarui ${new Intl.DateTimeFormat("id-ID", { timeStyle: "short" }).format(new Date())}`;
+    const rows = document.querySelector("#device-rows");
+    rows.replaceChildren();
+    document.querySelector("#device-empty").hidden = devices.length > 0;
+    for (const device of devices) {
+        const row = document.createElement("tr");
+        appendCell(row, device.displayName, true);
+        appendCell(row, device.deviceType === "GATE_IN" ? "Gerbang masuk" : "POS kasir");
+        appendCell(row, device.ipAddress || "-");
+        appendCell(row, device.firmwareVersion || "-");
+        appendCell(row, new Intl.DateTimeFormat("id-ID", { dateStyle: "short", timeStyle: "medium" })
+            .format(new Date(device.lastSeen)));
+        const statusCell = document.createElement("td");
+        const status = document.createElement("span");
+        status.className = `device-status ${device.isOnline ? "online" : "offline"}`;
+        status.textContent = device.isOnline ? "ONLINE" : "OFFLINE";
+        statusCell.append(status);
+        row.append(statusCell);
+        rows.append(row);
+    }
     clearMessage();
 }
 

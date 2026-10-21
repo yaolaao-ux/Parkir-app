@@ -5,6 +5,58 @@ namespace Parkir.Api.Data;
 
 public sealed class AdminRepository(NpgsqlDataSource dataSource)
 {
+    public async Task RecordDeviceHeartbeatAsync(
+        DeviceHeartbeatRequest request,
+        string? sourceIp,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO devices (device_id, device_type, display_name, firmware_version, ip_address, last_seen)
+            VALUES (@device_id, @device_type, @display_name, @firmware_version, @source_ip::inet, CURRENT_TIMESTAMP)
+            ON CONFLICT (device_id) DO UPDATE
+            SET device_type = EXCLUDED.device_type,
+                display_name = EXCLUDED.display_name,
+                firmware_version = EXCLUDED.firmware_version,
+                ip_address = EXCLUDED.ip_address,
+                last_seen = CURRENT_TIMESTAMP
+            """;
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("device_id", request.DeviceId.Trim());
+        command.Parameters.AddWithValue("device_type", request.DeviceType);
+        command.Parameters.AddWithValue("display_name", request.DisplayName.Trim());
+        command.Parameters.AddWithValue("firmware_version", (object?)request.FirmwareVersion ?? DBNull.Value);
+        command.Parameters.AddWithValue("source_ip", (object?)sourceIp ?? DBNull.Value);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<DeviceStatusDto>> GetDeviceStatusesAsync(CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT device_id, device_type, display_name, firmware_version, ip_address::text,
+                   last_seen, last_seen >= CURRENT_TIMESTAMP - INTERVAL '60 seconds'
+            FROM devices
+            ORDER BY device_type, display_name
+            """;
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var devices = new List<DeviceStatusDto>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            devices.Add(new DeviceStatusDto(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                new DateTimeOffset(reader.GetDateTime(5)),
+                reader.GetBoolean(6)));
+        }
+
+        return devices;
+    }
+
     public async Task<IReadOnlyList<DailyReportRow>> GetReportAsync(
         DateOnly from,
         DateOnly to,

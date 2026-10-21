@@ -78,6 +78,16 @@
                     <div><span class="summary-dot"></span><div><strong>Data tersimpan terpusat</strong><p>Panel tersambung ke server parkir pada jaringan lokal.</p></div></div>
                     <span id="last-updated">Belum diperbarui</span>
                 </div>
+                <div class="device-panel">
+                    <div class="section-heading">
+                        <div><h2>Perangkat LAN</h2><p>Online jika heartbeat diterima dalam 60 detik terakhir.</p></div>
+                    </div>
+                    <div class="table-wrap">
+                        <table><thead><tr><th>Perangkat</th><th>Tipe</th><th>IP</th><th>Versi</th><th>Terakhir terlihat</th><th>Status</th></tr></thead>
+                        <tbody id="device-rows"></tbody></table>
+                        <p id="device-empty" class="empty-state" hidden>Belum ada perangkat mengirim heartbeat.</p>
+                    </div>
+                </div>
             </section>
 
                <section id="reports-view" class="view-panel" hidden>

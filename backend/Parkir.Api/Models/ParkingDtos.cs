@@ -115,6 +115,21 @@ public sealed record ParkingReport(
     long TotalExits,
     decimal TotalRevenue);
 
+public sealed record DeviceHeartbeatRequest(
+    string DeviceId,
+    string DeviceType,
+    string DisplayName,
+    string? FirmwareVersion);
+
+public sealed record DeviceStatusDto(
+    string DeviceId,
+    string DeviceType,
+    string DisplayName,
+    string? FirmwareVersion,
+    string? IpAddress,
+    DateTimeOffset LastSeen,
+    bool IsOnline);
+
 public sealed record TicketData(
     string TicketId,
     DateTimeOffset TimeIn,

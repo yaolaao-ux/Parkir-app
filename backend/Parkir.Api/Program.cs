@@ -80,7 +80,8 @@ app.Use(async (context, next) =>
     var path = context.Request.Path;
     var deviceEndpoint = path.Equals("/api/entries", StringComparison.OrdinalIgnoreCase) ||
         path.StartsWithSegments("/api/members", StringComparison.OrdinalIgnoreCase) ||
-        path.Equals("/api/media/entries", StringComparison.OrdinalIgnoreCase);
+        path.Equals("/api/media/entries", StringComparison.OrdinalIgnoreCase) ||
+        path.Equals("/api/devices/heartbeat", StringComparison.OrdinalIgnoreCase);
     if (deviceEndpoint)
     {
         var suppliedKey = context.Request.Headers["X-API-Key"].ToString();

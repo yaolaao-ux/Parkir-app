@@ -21,8 +21,10 @@ public partial class MainWindow : Window
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly CheckoutQueue _checkoutQueue = new();
     private readonly DispatcherTimer _queueTimer;
+    private readonly DispatcherTimer _heartbeatTimer;
     private QuoteResponse? _currentQuote;
     private bool _isSyncingQueue;
+    private bool _isHeartbeatInProgress;
     private bool _checkoutPending;
     private string? _photoOutPath;
 
@@ -35,8 +37,12 @@ public partial class MainWindow : Window
         _queueTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
         _queueTimer.Tick += async (_, _) => await SyncPendingCheckoutsAsync();
         _queueTimer.Start();
+        _heartbeatTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+        _heartbeatTimer.Tick += async (_, _) => await SendDeviceHeartbeatAsync(session);
+        _heartbeatTimer.Start();
         UpdateConnectionLabel();
         _ = SyncPendingCheckoutsAsync();
+        _ = SendDeviceHeartbeatAsync(session);
         TicketInput.Focus();
     }
 
@@ -371,6 +377,36 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task SendDeviceHeartbeatAsync(PosSession session)
+    {
+        if (_isHeartbeatInProgress || !HasApiKey())
+        {
+            return;
+        }
+
+        _isHeartbeatInProgress = true;
+        try
+        {
+            var request = new DeviceHeartbeatRequest(
+                Environment.GetEnvironmentVariable("PARKIR_DEVICE_ID") ?? "GATE-OUT-01",
+                "CASHIER_POS",
+                Environment.GetEnvironmentVariable("PARKIR_DEVICE_NAME") ?? $"Pos - {session.FullName}",
+                Environment.GetEnvironmentVariable("PARKIR_APP_VERSION") ?? "1.0.0");
+            using var response = await Client.PostAsJsonAsync("api/devices/heartbeat", request, JsonOptions);
+            if (response.IsSuccessStatusCode)
+            {
+                UpdateConnectionLabel();
+            }
+        }
+        catch (HttpRequestException)
+        {
+        }
+        finally
+        {
+            _isHeartbeatInProgress = false;
+        }
+    }
+
     private static async Task<string> CompleteExitHardwareAsync(CheckoutResponse result)
     {
         var statuses = new List<string>();
@@ -585,4 +621,10 @@ public partial class MainWindow : Window
         DateTimeOffset TimeOut);
 
     private sealed record PhotoUploadResponse(string Path);
+
+    private sealed record DeviceHeartbeatRequest(
+        string DeviceId,
+        string DeviceType,
+        string DisplayName,
+        string? FirmwareVersion);
 }

@@ -10,9 +10,12 @@ constexpr char WIFI_SSID[] = "PARKIR-LAN";
 constexpr char WIFI_PASSWORD[] = "ganti-password";
 constexpr char API_URL[] = "http://192.168.1.10:5080/api/entries";
 constexpr char API_MEDIA_URL[] = "http://192.168.1.10:5080/api/media/entries";
+constexpr char API_HEARTBEAT_URL[] = "http://192.168.1.10:5080/api/devices/heartbeat";
 constexpr char API_KEY[] = "ganti-api-key";
 constexpr char CAMERA_SNAPSHOT_URL[] = "http://192.168.1.60/snapshot.jpg";
 constexpr char GATE_ID[] = "GATE-IN-01";
+constexpr char DEVICE_NAME[] = "Gate Masuk 01";
+constexpr char FIRMWARE_VERSION[] = "1.0.0";
 constexpr char PRINTER_HOST[] = "192.168.1.50";
 constexpr uint16_t PRINTER_PORT = 9100;
 constexpr uint32_t VEHICLE_TYPE_ID = 1;
@@ -23,6 +26,7 @@ constexpr uint8_t GATE_RELAY_PIN = 26;
 constexpr uint8_t RFID_SS_PIN = 5;
 constexpr uint8_t RFID_RST_PIN = 4;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 40;
+constexpr uint32_t HEARTBEAT_INTERVAL_MS = 20000;
 
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
 
@@ -32,6 +36,7 @@ bool lastButtonReading = HIGH;
 bool stableButtonState = HIGH;
 uint32_t lastButtonChangeAt = 0;
 uint32_t gateOpenedAt = 0;
+uint32_t lastHeartbeatAt = 0;
 
 bool vehiclePresent() {
   return digitalRead(LOOP_SENSOR_PIN) == LOW;
@@ -212,6 +217,34 @@ bool createEntry(const String &rfidUid, String &ticketId) {
   return true;
 }
 
+void sendHeartbeat() {
+  if (WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+
+  JsonDocument requestBody;
+  requestBody["deviceId"] = GATE_ID;
+  requestBody["deviceType"] = "GATE_IN";
+  requestBody["displayName"] = DEVICE_NAME;
+  requestBody["firmwareVersion"] = FIRMWARE_VERSION;
+  String body;
+  serializeJson(requestBody, body);
+
+  HTTPClient http;
+  http.setConnectTimeout(750);
+  http.setTimeout(1000);
+  if (!http.begin(API_HEARTBEAT_URL)) {
+    return;
+  }
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-API-Key", API_KEY);
+  const int statusCode = http.POST(body);
+  if (statusCode != HTTP_CODE_NO_CONTENT) {
+    Serial.printf("Heartbeat gate gagal, HTTP %d\n", statusCode);
+  }
+  http.end();
+}
+
 void openGate() {
   digitalWrite(GATE_RELAY_PIN, HIGH);
   gateIsOpen = true;
@@ -269,6 +302,12 @@ void setup() {
 }
 
 void loop() {
+  if (WiFi.status() == WL_CONNECTED &&
+      (lastHeartbeatAt == 0 || millis() - lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS)) {
+    lastHeartbeatAt = millis();
+    sendHeartbeat();
+  }
+
   if (gateIsOpen) {
     if (!vehiclePresent()) {
       vehicleCleared = true;

@@ -5,6 +5,30 @@ namespace Parkir.Api.Services;
 
 public sealed class AdminService(AdminRepository repository, AuditRepository auditRepository)
 {
+    public async Task RecordDeviceHeartbeatAsync(
+        DeviceHeartbeatRequest request,
+        string? sourceIp,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.DeviceId) || request.DeviceId.Length > 50 ||
+            request.DeviceId.Any(character => !char.IsLetterOrDigit(character) && character is not ('-' or '_' or '.')))
+        {
+            throw new ArgumentException("DeviceId tidak valid.");
+        }
+
+        if (request.DeviceType is not ("GATE_IN" or "CASHIER_POS") ||
+            string.IsNullOrWhiteSpace(request.DisplayName) || request.DisplayName.Length > 100 ||
+            request.FirmwareVersion?.Length > 50)
+        {
+            throw new ArgumentException("Data heartbeat perangkat tidak valid.");
+        }
+
+        await repository.RecordDeviceHeartbeatAsync(request, sourceIp, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<DeviceStatusDto>> GetDeviceStatusesAsync(CancellationToken cancellationToken) =>
+        repository.GetDeviceStatusesAsync(cancellationToken);
+
     public Task<DashboardSummary> GetDashboardAsync(CancellationToken cancellationToken) =>
         repository.GetDashboardAsync(cancellationToken);
 
