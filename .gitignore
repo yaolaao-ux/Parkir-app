@@ -4,13 +4,6 @@ firmware/gate_in/.pio/
 backend/Parkir.Api/storage/images/
 .env
 .env.*
-*.user
-*.suo
-**/bin/
-**/obj/
-firmware/gate_in/.pio/
-backend/Parkir.Api/storage/images/
-.env
-.env.*
+!.env.example
 *.user
 *.suo

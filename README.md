@@ -2,6 +2,40 @@
 
 Implementasi contoh bertahap dari PRD: PostgreSQL, REST API ASP.NET Core, aplikasi kasir WPF, dan firmware ESP32.
 
+## Menjalankan API dan PostgreSQL dengan Docker
+
+Persyaratan: Docker Engine dan Docker Compose v2. Salin template environment, lalu ganti semua nilai contoh dengan secret acak sebelum menjalankan layanan:
+
+```sh
+cp .env.example .env
+```
+
+Atur `POSTGRES_PASSWORD`, `API_KEY`, dan `JWT_SIGNING_KEY` pada `.env`. Kunci JWT harus memiliki panjang minimal 32 byte. Jangan commit `.env`; file tersebut diabaikan Git.
+
+Jalankan PostgreSQL dan API:
+
+```sh
+docker compose -f docker-compose.yml up --build -d
+```
+
+API tersedia di `http://localhost:5080/`. PostgreSQL tersedia di `localhost:5432`. Pada inisialisasi pertama volume database, `database/schema.sql` dijalankan otomatis. Data PostgreSQL dan gambar API disimpan di named volume Docker, sehingga tetap ada saat container dihentikan atau dibuat ulang.
+
+Untuk melihat log dan menghentikan layanan:
+
+```sh
+docker compose -f docker-compose.yml logs -f
+docker compose -f docker-compose.yml down
+```
+
+Untuk membuat akun pada database Docker, jalankan utilitas provisioning dari host dengan connection string yang cocok dengan nilai pada `.env`:
+
+```sh
+ConnectionStrings__Parking='Host=127.0.0.1;Port=5432;Database=parkir;Username=parkir;Password=GANTI_DENGAN_POSTGRES_PASSWORD' \
+  dotnet run --project tools/Parkir.UserProvisioner
+```
+
+Perintah `down` mempertahankan data. Jika ingin menghapus database beserta seluruh datanya, `docker compose -f docker-compose.yml down -v` akan menghapus named volume PostgreSQL dan gambar; gunakan hanya bila memang ingin menghapus data. Perubahan `database/schema.sql` tidak otomatis diterapkan pada volume yang sudah ada; gunakan migrasi yang sesuai untuk database berjalan.
+
 ## 1. Database PostgreSQL
 
 Jalankan schema pada database kosong:

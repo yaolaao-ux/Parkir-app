@@ -1,0 +1,14 @@
+.git
+.github
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+pos/
+firmware/
+tools/
+database/
+*.sln
+*.slnx
+README.md
+Product Requirement Document.md
