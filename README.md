@@ -26,12 +26,23 @@ DOTNET_ROLL_FORWARD=Major ConnectionStrings__Parking='Host=127.0.0.1;Database=pa
   dotnet run --project tools/Parkir.UserProvisioner -- --example-admin
 ```
 
+Untuk membuat akun kasir contoh agar POS dapat diuji, gunakan mode yang sama:
+
+```sh
+DOTNET_ROLL_FORWARD=Major ConnectionStrings__Parking='Host=127.0.0.1;Database=parkir;Username=postgres;Password=GANTI_PASSWORD' \
+  dotnet run --project tools/Parkir.UserProvisioner -- --example-cashier
+```
+
+Utilitas membuat username `cashier-demo` dan password acak yang ditampilkan sekali setelah berhasil disimpan.
+
 Kredensial akun demo development yang sudah dibuat pada database lokal:
 
 - Username: `admin-demo`
 - Password: `nlXFkov2FZGEaxnPhQ8pv9Kuq4rQhBzn`
+- Username: `cashier-demo`
+- Password: `xrikhhmNGOhme-g2wrh0ImVSX_OrpQuh`
 
-Password disimpan di README atas permintaan untuk kemudahan pengujian. Jangan gunakan kredensial ini di produksi atau pada database/jaringan bersama; bila repository dibagikan, hapus password dari README dan buat akun produksi dengan password baru. Jika database lokal dibuat ulang, jalankan utilitas di atas lagi untuk menghasilkan akun baru.
+Password akun demo disimpan di README atas permintaan untuk kemudahan pengujian. Jangan gunakan kredensial ini di produksi atau pada database/jaringan bersama; bila repository dibagikan, hapus password dari README dan buat akun produksi dengan password baru. Jika database lokal dibuat ulang, jalankan utilitas di atas lagi untuk menghasilkan akun baru.
 
 ## 2. REST API
 

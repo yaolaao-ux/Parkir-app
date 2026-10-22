@@ -11,16 +11,24 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 var createExampleAdmin = args.Contains("--example-admin", StringComparer.Ordinal);
-var username = createExampleAdmin ? "admin-demo" : ReadValue("Username: ");
-var fullName = createExampleAdmin ? "Administrator Demo" : ReadValue("Nama lengkap: ");
-var role = createExampleAdmin ? "ADMIN" : ReadValue("Role (ADMIN/CASHIER): ").ToUpperInvariant();
+var createExampleCashier = args.Contains("--example-cashier", StringComparer.Ordinal);
+if (createExampleAdmin && createExampleCashier)
+{
+    Console.Error.WriteLine("Pilih hanya satu mode akun contoh.");
+    return 1;
+}
+
+var createExampleAccount = createExampleAdmin || createExampleCashier;
+var username = createExampleAdmin ? "admin-demo" : createExampleCashier ? "cashier-demo" : ReadValue("Username: ");
+var fullName = createExampleAdmin ? "Administrator Demo" : createExampleCashier ? "Kasir Demo" : ReadValue("Nama lengkap: ");
+var role = createExampleAdmin ? "ADMIN" : createExampleCashier ? "CASHIER" : ReadValue("Role (ADMIN/CASHIER): ").ToUpperInvariant();
 if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(fullName) || role is not ("ADMIN" or "CASHIER"))
 {
     Console.Error.WriteLine("Username, nama, dan role ADMIN/CASHIER yang valid wajib diisi.");
     return 1;
 }
 
-var password = createExampleAdmin
+var password = createExampleAccount
     ? Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
     : ReadPassword();
 if (password.Length < 12)
@@ -42,9 +50,9 @@ command.Parameters.AddWithValue("password_hash", passwordHash);
 command.Parameters.AddWithValue("full_name", fullName);
 command.Parameters.AddWithValue("role", role);
 await command.ExecuteNonQueryAsync();
-if (createExampleAdmin)
+if (createExampleAccount)
 {
-    Console.WriteLine("Akun administrator contoh berhasil dibuat. Simpan password ini sekarang:");
+    Console.WriteLine($"Akun contoh {role} berhasil dibuat. Simpan password ini sekarang:");
     Console.WriteLine($"Username: {username}");
     Console.WriteLine($"Password: {password}");
 }
