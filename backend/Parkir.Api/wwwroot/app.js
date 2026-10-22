@@ -13,8 +13,10 @@ document.querySelector("#logout-button").addEventListener("click", logout);
 document.querySelector("#refresh-button").addEventListener("click", loadDashboard);
 document.querySelector("#add-tariff-button").addEventListener("click", () => openTariffDialog());
 document.querySelector("#add-member-button").addEventListener("click", openMemberDialog);
+document.querySelector("#add-gate-button").addEventListener("click", () => document.querySelector("#gate-dialog").showModal());
 document.querySelector("#tariff-form").addEventListener("submit", saveTariff);
 document.querySelector("#member-form").addEventListener("submit", saveMember);
+document.querySelector("#gate-form").addEventListener("submit", saveGate);
 document.querySelector("#report-form").addEventListener("submit", event => {
     event.preventDefault();
     loadReport();
@@ -97,7 +99,8 @@ function showView(viewName) {
         dashboard: ["IKHTISAR HARI INI", "Ringkasan"],
         tariffs: ["KONFIGURASI OPERASIONAL", "Tarif kendaraan"],
         members: ["DATA LANGGANAN", "Member"],
-        reports: ["REKAP OPERASIONAL", "Laporan"]
+        reports: ["REKAP OPERASIONAL", "Laporan"],
+        gates: ["INFRASTRUKTUR PARKIR", "Gate dan pos"]
     };
     document.querySelector("#page-kicker").textContent = titles[viewName][0];
     document.querySelector("#page-title").textContent = titles[viewName][1];
@@ -112,6 +115,7 @@ async function loadCurrentView() {
         if (state.currentView === "tariffs") await loadTariffs();
         if (state.currentView === "members") await loadMembers();
         if (state.currentView === "reports") await loadReport();
+        if (state.currentView === "gates") await loadGates();
     } catch (error) {
         showMessage(error.message, true);
     }
@@ -169,6 +173,78 @@ async function loadReport() {
         rows.append(row);
     }
     clearMessage();
+}
+
+async function loadGates() {
+    const gates = await api("/api/admin/gates");
+    const rows = document.querySelector("#gate-rows");
+    rows.replaceChildren();
+    document.querySelector("#gate-empty").hidden = gates.length > 0;
+    for (const gate of gates) {
+        const row = document.createElement("tr");
+        appendCell(row, gate.gateId, true);
+        appendCell(row, gate.gateType === "GATE_IN" ? "Masuk" : "Keluar");
+        appendCell(row, gate.displayName);
+        appendCell(row, gate.lastSeen
+            ? new Intl.DateTimeFormat("id-ID", { dateStyle: "short", timeStyle: "medium" }).format(new Date(gate.lastSeen))
+            : "Belum heartbeat");
+        const deviceCell = document.createElement("td");
+        const onlineBadge = document.createElement("span");
+        onlineBadge.className = `device-status ${gate.isOnline ? "online" : "offline"}`;
+        onlineBadge.textContent = gate.isOnline ? "ONLINE" : "OFFLINE";
+        deviceCell.append(onlineBadge);
+        row.append(deviceCell);
+
+        const enabledCell = document.createElement("td");
+        const enabledSelect = document.createElement("select");
+        enabledSelect.className = "status-select";
+        enabledSelect.setAttribute("aria-label", `Status gate ${gate.gateId}`);
+        for (const [value, label] of [[true, "Aktif"], [false, "Nonaktif"]]) {
+            const option = document.createElement("option");
+            option.value = String(value);
+            option.textContent = label;
+            option.selected = gate.enabled === value;
+            enabledSelect.append(option);
+        }
+        enabledSelect.addEventListener("change", () => updateGate(gate, enabledSelect.value === "true"));
+        enabledCell.append(enabledSelect);
+        row.append(enabledCell);
+        rows.append(row);
+    }
+    clearMessage();
+}
+
+async function saveGate(event) {
+    event.preventDefault();
+    const values = new FormData(event.currentTarget);
+    const input = {
+        gateId: values.get("gateId").trim().toUpperCase(),
+        gateType: values.get("gateType"),
+        displayName: values.get("displayName").trim(),
+        enabled: true
+    };
+    try {
+        await api("/api/admin/gates", { method: "POST", body: JSON.stringify(input) });
+        event.currentTarget.reset();
+        document.querySelector("#gate-dialog").close();
+        showMessage(`Gate ${input.gateId} terdaftar. Atur PARKIR_GATE_ID pada POS atau SET_GATE_ID pada serial ESP32 agar cocok.`);
+        await loadGates();
+    } catch (error) {
+        showMessage(error.message, true);
+    }
+}
+
+async function updateGate(gate, enabled) {
+    try {
+        await api(`/api/admin/gates/${encodeURIComponent(gate.gateId)}`, {
+            method: "PUT",
+            body: JSON.stringify({ ...gate, enabled })
+        });
+        showMessage(`Gate ${gate.gateId} ${enabled ? "diaktifkan" : "dinonaktifkan"}.`);
+    } catch (error) {
+        showMessage(error.message, true);
+        await loadGates();
+    }
 }
 
 async function exportReport() {

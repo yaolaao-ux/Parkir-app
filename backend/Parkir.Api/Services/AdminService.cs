@@ -5,6 +5,45 @@ namespace Parkir.Api.Services;
 
 public sealed class AdminService(AdminRepository repository, AuditRepository auditRepository)
 {
+    public Task<IReadOnlyList<GateDto>> GetGatesAsync(CancellationToken cancellationToken) =>
+        repository.GetGatesAsync(cancellationToken);
+
+    public async Task<bool> CreateGateAsync(
+        GateInput input, long actorId, string? sourceIp, CancellationToken cancellationToken)
+    {
+        ValidateGate(input);
+        var created = await repository.CreateGateAsync(input, cancellationToken);
+        if (created)
+        {
+            await auditRepository.WriteAsync(actorId, "GATE_CREATED", "GATE", input.GateId.Trim().ToUpperInvariant(),
+                System.Text.Json.JsonSerializer.Serialize(input), sourceIp, cancellationToken);
+        }
+
+        return created;
+    }
+
+    public async Task<bool> UpdateGateAsync(
+        string gateId, GateInput input, long actorId, string? sourceIp, CancellationToken cancellationToken)
+    {
+        ValidateGate(input);
+        if (!string.Equals(gateId, input.GateId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("GateId tidak dapat diubah; daftarkan gate baru untuk mengganti ID.");
+        }
+
+        var updated = await repository.UpdateGateAsync(gateId, input, cancellationToken);
+        if (updated)
+        {
+            await auditRepository.WriteAsync(actorId, "GATE_UPDATED", "GATE", gateId,
+                System.Text.Json.JsonSerializer.Serialize(input), sourceIp, cancellationToken);
+        }
+
+        return updated;
+    }
+
+    public Task<bool> IsGateEnabledAsync(string gateId, string gateType, CancellationToken cancellationToken) =>
+        repository.IsGateEnabledAsync(gateId, gateType, cancellationToken);
+
     public async Task RecordDeviceHeartbeatAsync(
         DeviceHeartbeatRequest request,
         string? sourceIp,
@@ -120,6 +159,17 @@ public sealed class AdminService(AdminRepository repository, AuditRepository aud
             input.GracePeriodMinutes < 0 || input.LostTicketFee < 0 || input.MaxDailyRate < 0)
         {
             throw new ArgumentException("Nama kendaraan dan tarif tidak boleh kosong atau negatif.");
+        }
+    }
+
+    private static void ValidateGate(GateInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.GateId) || input.GateId.Length > 20 ||
+            input.GateId.Any(character => !char.IsLetterOrDigit(character) && character is not ('-' or '_' or '.')) ||
+            input.GateType is not ("GATE_IN" or "GATE_OUT") || string.IsNullOrWhiteSpace(input.DisplayName) ||
+            input.DisplayName.Length > 100)
+        {
+            throw new ArgumentException("GateId, arah, atau nama gate tidak valid.");
         }
     }
 }

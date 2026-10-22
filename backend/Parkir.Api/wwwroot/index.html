@@ -42,6 +42,7 @@
                 <button class="nav-item" data-view="tariffs" type="button"><span>02</span> Tarif kendaraan</button>
                 <button class="nav-item" data-view="members" type="button"><span>03</span> Member</button>
                    <button class="nav-item" data-view="reports" type="button"><span>04</span> Laporan</button>
+                <button class="nav-item" data-view="gates" type="button"><span>05</span> Gate</button>
             </nav>
             <div class="sidebar-bottom">
                 <div class="connection"><i></i><span>Server lokal</span></div>
@@ -124,6 +125,18 @@
                 </div>
             </section>
 
+            <section id="gates-view" class="view-panel" hidden>
+                <div class="section-heading">
+                    <div><h2>Gate dan pos</h2><p>Daftarkan ID unik untuk setiap jalur masuk dan keluar.</p></div>
+                    <button id="add-gate-button" class="button primary" type="button">Tambah gate</button>
+                </div>
+                <div class="table-wrap">
+                    <table><thead><tr><th>Gate ID</th><th>Arah</th><th>Nama</th><th>Last seen</th><th>Perangkat</th><th>Aktif</th></tr></thead>
+                    <tbody id="gate-rows"></tbody></table>
+                    <p id="gate-empty" class="empty-state" hidden>Belum ada gate terdaftar.</p>
+                </div>
+            </section>
+
             <section id="members-view" class="view-panel" hidden>
                 <div class="section-heading">
                     <div><h2>Member</h2><p>Daftarkan kartu RFID dan kelola masa aktif.</p></div>
@@ -165,6 +178,16 @@
                 <label>Berlaku sampai<input name="expiredDate" type="date" required></label>
             </div>
             <div class="dialog-actions"><button class="button subtle" type="button" data-close="member-dialog">Batal</button><button class="button primary" type="submit">Simpan member</button></div>
+        </form>
+    </dialog>
+
+    <dialog id="gate-dialog" class="dialog">
+        <form id="gate-form" class="dialog-form">
+            <div class="dialog-heading"><div><p class="eyebrow">KONFIGURASI PERANGKAT</p><h2>Tambah gate</h2></div><button class="icon-close" type="button" data-close="gate-dialog" aria-label="Tutup">×</button></div>
+            <label>Gate ID unik<input name="gateId" maxlength="20" pattern="[A-Za-z0-9._-]+" required placeholder="GATE-IN-02"></label>
+            <label>Arah<select name="gateType" required><option value="GATE_IN">Masuk</option><option value="GATE_OUT">Keluar</option></select></label>
+            <label>Nama tampilan<input name="displayName" maxlength="100" required placeholder="Gerbang Masuk 02"></label>
+            <div class="dialog-actions"><button class="button subtle" type="button" data-close="gate-dialog">Batal</button><button class="button primary" type="submit">Daftarkan gate</button></div>
         </form>
     </dialog>
 </body>

@@ -21,6 +21,42 @@ public sealed class AdminController(AdminService adminService) : ControllerBase
     public async Task<ActionResult<IReadOnlyList<DeviceStatusDto>>> GetDevices(CancellationToken cancellationToken) =>
         Ok(await adminService.GetDeviceStatusesAsync(cancellationToken));
 
+    [HttpGet("gates")]
+    public async Task<ActionResult<IReadOnlyList<GateDto>>> GetGates(CancellationToken cancellationToken) =>
+        Ok(await adminService.GetGatesAsync(cancellationToken));
+
+    [HttpPost("gates")]
+    public async Task<IActionResult> CreateGate(GateInput input, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var actorId = GetActorId();
+            var created = await adminService.CreateGateAsync(
+                input, actorId, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            return created ? Created($"/api/admin/gates/{input.GateId}", new { gateId = input.GateId }) : Conflict();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpPut("gates/{gateId}")]
+    public async Task<IActionResult> UpdateGate(string gateId, GateInput input, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var actorId = GetActorId();
+            var updated = await adminService.UpdateGateAsync(
+                gateId, input, actorId, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            return updated ? NoContent() : NotFound();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
     [HttpGet("reports")]
     public async Task<ActionResult<ParkingReport>> GetReport(
         [FromQuery] DateOnly from,

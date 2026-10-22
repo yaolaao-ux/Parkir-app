@@ -55,6 +55,20 @@ CREATE TABLE devices (
 
 CREATE INDEX ix_devices_last_seen ON devices (last_seen DESC);
 
+CREATE TABLE gates (
+    gate_id VARCHAR(20) PRIMARY KEY,
+    gate_type VARCHAR(20) NOT NULL CHECK (gate_type IN ('GATE_IN', 'GATE_OUT')),
+    display_name VARCHAR(100) NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO gates (gate_id, gate_type, display_name)
+VALUES
+    ('GATE-IN-01', 'GATE_IN', 'Gerbang Masuk 01'),
+    ('GATE-OUT-01', 'GATE_OUT', 'Gerbang Keluar 01')
+ON CONFLICT (gate_id) DO NOTHING;
+
 CREATE TABLE transactions (
     ticket_id VARCHAR(50) PRIMARY KEY,
     vehicle_type_id BIGINT NOT NULL REFERENCES vehicle_types(id),

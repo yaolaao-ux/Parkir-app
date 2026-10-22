@@ -1,6 +1,7 @@
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <MFRC522.h>
+#include <Preferences.h>
 #include <SPI.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
@@ -13,7 +14,7 @@ constexpr char API_MEDIA_URL[] = "http://192.168.1.10:5080/api/media/entries";
 constexpr char API_HEARTBEAT_URL[] = "http://192.168.1.10:5080/api/devices/heartbeat";
 constexpr char API_KEY[] = "ganti-api-key";
 constexpr char CAMERA_SNAPSHOT_URL[] = "http://192.168.1.60/snapshot.jpg";
-constexpr char GATE_ID[] = "GATE-IN-01";
+constexpr char DEFAULT_GATE_ID[] = "GATE-IN-01";
 constexpr char DEVICE_NAME[] = "Gate Masuk 01";
 constexpr char FIRMWARE_VERSION[] = "1.0.0";
 constexpr char PRINTER_HOST[] = "192.168.1.50";
@@ -29,6 +30,8 @@ constexpr uint32_t BUTTON_DEBOUNCE_MS = 40;
 constexpr uint32_t HEARTBEAT_INTERVAL_MS = 20000;
 
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
+Preferences preferences;
+String gateId;
 
 bool gateIsOpen = false;
 bool vehicleCleared = false;
@@ -176,7 +179,7 @@ bool createEntry(const String &rfidUid, String &ticketId) {
   }
 
   JsonDocument requestBody;
-  requestBody["gateId"] = GATE_ID;
+  requestBody["gateId"] = gateId;
   requestBody["vehicleTypeId"] = VEHICLE_TYPE_ID;
   if (photoPath.length() > 0) {
     requestBody["photoInPath"] = photoPath;
@@ -223,9 +226,9 @@ void sendHeartbeat() {
   }
 
   JsonDocument requestBody;
-  requestBody["deviceId"] = GATE_ID;
+  requestBody["deviceId"] = gateId;
   requestBody["deviceType"] = "GATE_IN";
-  requestBody["displayName"] = DEVICE_NAME;
+  requestBody["displayName"] = String(DEVICE_NAME) + " (" + gateId + ")";
   requestBody["firmwareVersion"] = FIRMWARE_VERSION;
   String body;
   serializeJson(requestBody, body);
@@ -274,8 +277,42 @@ void issueTicket(const String &rfidUid) {
   }
 }
 
+void processGateConfiguration() {
+  if (!Serial.available()) {
+    return;
+  }
+
+  String command = Serial.readStringUntil('\n');
+  command.trim();
+  constexpr char prefix[] = "SET_GATE_ID=";
+  if (!command.startsWith(prefix)) {
+    return;
+  }
+
+  String requestedId = command.substring(sizeof(prefix) - 1);
+  if (requestedId.length() == 0 || requestedId.length() > 20) {
+    Serial.println("Gate ID harus 1-20 karakter.");
+    return;
+  }
+  for (size_t index = 0; index < requestedId.length(); index++) {
+    const char character = requestedId[index];
+    if (!isAlphaNumeric(character) && character != '-' && character != '_' && character != '.') {
+      Serial.println("Gate ID hanya boleh berisi huruf, angka, titik, garis bawah, dan tanda hubung.");
+      return;
+    }
+  }
+
+  gateId = requestedId;
+  preferences.putString("gate_id", gateId);
+  Serial.printf("Gate ID tersimpan: %s. Pastikan ID ini sudah didaftarkan di dashboard.\n", gateId.c_str());
+}
+
 void setup() {
   Serial.begin(115200);
+  Serial.setTimeout(100);
+  preferences.begin("parkir-gate", false);
+  gateId = preferences.getString("gate_id", DEFAULT_GATE_ID);
+  Serial.printf("Gate ID aktif: %s\n", gateId.c_str());
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(LOOP_SENSOR_PIN, INPUT_PULLUP);
   pinMode(GATE_RELAY_PIN, OUTPUT);
@@ -302,6 +339,8 @@ void setup() {
 }
 
 void loop() {
+  processGateConfiguration();
+
   if (WiFi.status() == WL_CONNECTED &&
       (lastHeartbeatAt == 0 || millis() - lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS)) {
     lastHeartbeatAt = millis();

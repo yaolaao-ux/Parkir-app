@@ -3,13 +3,17 @@ using Parkir.Api.Models;
 
 namespace Parkir.Api.Services;
 
-public sealed class ParkingService(ParkingRepository repository)
+public sealed class ParkingService(ParkingRepository repository, AdminService adminService)
 {
     public async Task<EntryResponse> CreateEntryAsync(EntryRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.GateId) || request.VehicleTypeId <= 0)
         {
             throw new ArgumentException("GateId dan VehicleTypeId wajib diisi.");
+        }
+        if (!await adminService.IsGateEnabledAsync(request.GateId, "GATE_IN", cancellationToken))
+        {
+            throw new InvalidOperationException("Gate masuk belum terdaftar atau sedang dinonaktifkan.");
         }
 
         var timeIn = DateTimeOffset.UtcNow;
@@ -65,6 +69,10 @@ public sealed class ParkingService(ParkingRepository repository)
         if (string.IsNullOrWhiteSpace(request.GateId))
         {
             throw new ArgumentException("GateId wajib diisi.");
+        }
+        if (!await adminService.IsGateEnabledAsync(request.GateId, "GATE_OUT", cancellationToken))
+        {
+            throw new InvalidOperationException("Gate keluar belum terdaftar atau sedang dinonaktifkan.");
         }
 
         if (!request.LostTicket && string.IsNullOrWhiteSpace(request.PaymentMethod))

@@ -5,6 +5,74 @@ namespace Parkir.Api.Data;
 
 public sealed class AdminRepository(NpgsqlDataSource dataSource)
 {
+    public async Task<IReadOnlyList<GateDto>> GetGatesAsync(CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT g.gate_id, g.gate_type, g.display_name, g.enabled,
+                   coalesce(d.last_seen >= CURRENT_TIMESTAMP - INTERVAL '60 seconds', FALSE), d.last_seen
+            FROM gates g
+            LEFT JOIN devices d ON d.device_id = g.gate_id
+                AND d.device_type = CASE WHEN g.gate_type = 'GATE_IN' THEN 'GATE_IN' ELSE 'CASHIER_POS' END
+            ORDER BY g.gate_type, g.gate_id
+            """;
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var gates = new List<GateDto>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            gates.Add(new GateDto(
+                reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetBoolean(3),
+                reader.GetBoolean(4), reader.IsDBNull(5) ? null : new DateTimeOffset(reader.GetDateTime(5))));
+        }
+
+        return gates;
+    }
+
+    public async Task<bool> IsGateEnabledAsync(string gateId, string gateType, CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT EXISTS (SELECT 1 FROM gates WHERE gate_id = @gate_id AND gate_type = @gate_type AND enabled)";
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("gate_id", gateId.Trim());
+        command.Parameters.AddWithValue("gate_type", gateType);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+    }
+
+    public async Task<bool> CreateGateAsync(GateInput input, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO gates (gate_id, gate_type, display_name, enabled)
+            VALUES (@gate_id, @gate_type, @display_name, @enabled)
+            ON CONFLICT (gate_id) DO NOTHING
+            """;
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        AddGateParameters(command, input);
+        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+    }
+
+    public async Task<bool> UpdateGateAsync(string gateId, GateInput input, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE gates SET gate_type = @gate_type, display_name = @display_name, enabled = @enabled
+            WHERE gate_id = @gate_id
+            """;
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        AddGateParameters(command, input);
+        command.Parameters.AddWithValue("gate_id", gateId);
+        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+    }
+
+    private static void AddGateParameters(NpgsqlCommand command, GateInput input)
+    {
+        command.Parameters.AddWithValue("gate_id", input.GateId.Trim().ToUpperInvariant());
+        command.Parameters.AddWithValue("gate_type", input.GateType);
+        command.Parameters.AddWithValue("display_name", input.DisplayName.Trim());
+        command.Parameters.AddWithValue("enabled", input.Enabled);
+    }
+
     public async Task RecordDeviceHeartbeatAsync(
         DeviceHeartbeatRequest request,
         string? sourceIp,

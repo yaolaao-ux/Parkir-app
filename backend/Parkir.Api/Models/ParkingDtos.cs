@@ -130,6 +130,20 @@ public sealed record DeviceStatusDto(
     DateTimeOffset LastSeen,
     bool IsOnline);
 
+public sealed record GateDto(
+    string GateId,
+    string GateType,
+    string DisplayName,
+    bool Enabled,
+    bool IsOnline,
+    DateTimeOffset? LastSeen);
+
+public sealed record GateInput(
+    string GateId,
+    string GateType,
+    string DisplayName,
+    bool Enabled);
+
 public sealed record TicketData(
     string TicketId,
     DateTimeOffset TimeIn,

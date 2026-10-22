@@ -122,8 +122,9 @@ public partial class MainWindow : Window
         }
 
         var idempotencyKey = Guid.NewGuid();
+        var gateId = Environment.GetEnvironmentVariable("PARKIR_GATE_ID")?.Trim().ToUpperInvariant() ?? "GATE-OUT-01";
         var request = new CheckoutRequest(
-            GateId: "GATE-OUT-01",
+            GateId: gateId,
             PaymentMethod: ((ComboBoxItem)PaymentMethod.SelectedItem).Content.ToString() ?? "CASH",
             LostTicket: LostTicketCheck.IsChecked == true,
             IdentityVerified: IdentityVerifiedCheck.IsChecked == true,
@@ -388,7 +389,8 @@ public partial class MainWindow : Window
         try
         {
             var request = new DeviceHeartbeatRequest(
-                Environment.GetEnvironmentVariable("PARKIR_DEVICE_ID") ?? "GATE-OUT-01",
+                Environment.GetEnvironmentVariable("PARKIR_DEVICE_ID") ??
+                    Environment.GetEnvironmentVariable("PARKIR_GATE_ID") ?? "GATE-OUT-01",
                 "CASHIER_POS",
                 Environment.GetEnvironmentVariable("PARKIR_DEVICE_NAME") ?? $"Pos - {session.FullName}",
                 Environment.GetEnvironmentVariable("PARKIR_APP_VERSION") ?? "1.0.0");
