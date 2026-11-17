@@ -17,116 +17,168 @@ public sealed class ParkingRepository(NpgsqlDataSource dataSource, BusinessClock
         EntryRequest request,
         DateTimeOffset timeIn,
         string? idempotencyKey,
+        string requestFingerprint,
         CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         long vehicleTypeId = request.VehicleTypeId;
         long? memberId = null;
         string? memberName = null;
 
-        if (idempotencyKey is not null)
+        try
         {
-            var existing = await FindExistingEntryAsync(connection, request.GateId, idempotencyKey, cancellationToken);
-            if (existing is not null)
+            if (idempotencyKey is not null)
             {
-                return existing;
+                var existing = await FindExistingEntryAsync(
+                    connection, transaction, request.GateId, idempotencyKey, requestFingerprint, cancellationToken);
+                if (existing is not null)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                    return existing;
+                }
             }
-        }
 
-        if (!string.IsNullOrWhiteSpace(request.RfidUid))
-        {
-            const string memberSql = """
-                SELECT id, full_name, vehicle_type_id
-                FROM members
-                WHERE rfid_uid = @uid AND status = 'ACTIVE' AND expired_date >= @today
+            if (!string.IsNullOrWhiteSpace(request.RfidUid))
+            {
+                const string memberSql = """
+                    SELECT id, full_name, vehicle_type_id
+                    FROM members
+                    WHERE rfid_uid = @uid AND status = 'ACTIVE' AND expired_date >= @today
+                    FOR UPDATE
+                    """;
+                await using var memberCommand = new NpgsqlCommand(memberSql, connection, transaction);
+                memberCommand.Parameters.AddWithValue("uid", request.RfidUid.Trim());
+                memberCommand.Parameters.AddWithValue("today", clock.Today);
+                await using (var memberReader = await memberCommand.ExecuteReaderAsync(cancellationToken))
+                {
+                    if (!await memberReader.ReadAsync(cancellationToken))
+                    {
+                        throw new InvalidOperationException("Kartu RFID tidak aktif atau masa berlakunya habis.");
+                    }
+
+                    memberId = memberReader.GetInt64(0);
+                    memberName = memberReader.GetString(1);
+                    if (!memberReader.IsDBNull(2))
+                    {
+                        vehicleTypeId = memberReader.GetInt64(2);
+                    }
+                }
+
+                const string activeSessionSql = """
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM transactions
+                        WHERE member_id = @member_id
+                          AND time_out IS NULL
+                          AND payment_status = 'UNPAID'
+                    )
+                    """;
+                await using var activeCommand = new NpgsqlCommand(activeSessionSql, connection, transaction);
+                activeCommand.Parameters.AddWithValue("member_id", memberId.Value);
+                var hasActiveSession = (bool)(await activeCommand.ExecuteScalarAsync(cancellationToken) ?? false);
+                if (hasActiveSession)
+                {
+                    throw new InvalidOperationException(
+                        "Member masih memiliki sesi parkir aktif. Selesaikan sesi sebelumnya sebelum masuk kembali.");
+                }
+            }
+
+            const string insertSql = """
+                INSERT INTO transactions
+                    (ticket_id, vehicle_type_id, member_id, gate_in_id, time_in, photo_in_path,
+                     entry_idempotency_key, entry_request_fingerprint, grace_period_minutes,
+                     first_hour_rate, hourly_rate, lost_ticket_fee, max_daily_rate)
+                SELECT
+                    @ticket_id, @vehicle_type_id, @member_id, @gate_id, @time_in, @photo_path,
+                    @entry_key, @request_fingerprint, v.grace_period_minutes, v.first_hour_rate,
+                    v.hourly_rate, v.lost_ticket_fee, v.max_daily_rate
+                FROM vehicle_types v
+                WHERE v.id = @vehicle_type_id
+                ON CONFLICT (gate_in_id, entry_idempotency_key)
+                    WHERE entry_idempotency_key IS NOT NULL
+                    DO NOTHING
+                RETURNING ticket_id, time_in
                 """;
-            await using var memberCommand = new NpgsqlCommand(memberSql, connection);
-            memberCommand.Parameters.AddWithValue("uid", request.RfidUid.Trim());
-            memberCommand.Parameters.AddWithValue("today", clock.Today);
-            await using var memberReader = await memberCommand.ExecuteReaderAsync(cancellationToken);
-            if (!await memberReader.ReadAsync(cancellationToken))
+            await using var command = new NpgsqlCommand(insertSql, connection, transaction);
+            command.Parameters.AddWithValue("ticket_id", ticketId);
+            command.Parameters.AddWithValue("vehicle_type_id", vehicleTypeId);
+            command.Parameters.AddWithValue("member_id", memberId is null ? DBNull.Value : memberId.Value);
+            command.Parameters.AddWithValue("gate_id", request.GateId);
+            command.Parameters.AddWithValue("time_in", timeIn);
+            command.Parameters.AddWithValue("photo_path", (object?)request.PhotoInPath ?? DBNull.Value);
+            command.Parameters.AddWithValue("entry_key", (object?)idempotencyKey ?? DBNull.Value);
+            command.Parameters.AddWithValue("request_fingerprint", requestFingerprint);
+            EntryPersistResult? created = null;
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
             {
-                throw new InvalidOperationException("Kartu RFID tidak aktif atau masa berlakunya habis.");
+                if (await reader.ReadAsync(cancellationToken))
+                {
+                    created = new EntryPersistResult(
+                        reader.GetString(0),
+                        new DateTimeOffset(reader.GetDateTime(1)),
+                        memberName,
+                        true);
+                }
             }
 
-            memberId = memberReader.GetInt64(0);
-            memberName = memberReader.GetString(1);
-            if (!memberReader.IsDBNull(2))
+            if (created is not null)
             {
-                vehicleTypeId = memberReader.GetInt64(2);
+                await transaction.CommitAsync(cancellationToken);
+                return created;
             }
-        }
 
-        const string insertSql = """
-            INSERT INTO transactions
-                (ticket_id, vehicle_type_id, member_id, gate_in_id, time_in, photo_in_path,
-                 entry_idempotency_key, grace_period_minutes, first_hour_rate, hourly_rate,
-                 lost_ticket_fee, max_daily_rate)
-            SELECT
-                @ticket_id, @vehicle_type_id, @member_id, @gate_id, @time_in, @photo_path,
-                @entry_key, v.grace_period_minutes, v.first_hour_rate, v.hourly_rate,
-                v.lost_ticket_fee, v.max_daily_rate
-            FROM vehicle_types v
-            WHERE v.id = @vehicle_type_id
-            ON CONFLICT (gate_in_id, entry_idempotency_key)
-                WHERE entry_idempotency_key IS NOT NULL
-                DO NOTHING
-            RETURNING ticket_id, time_in
-            """;
-        await using var command = new NpgsqlCommand(insertSql, connection);
-        command.Parameters.AddWithValue("ticket_id", ticketId);
-        command.Parameters.AddWithValue("vehicle_type_id", vehicleTypeId);
-        command.Parameters.AddWithValue("member_id", memberId is null ? DBNull.Value : memberId.Value);
-        command.Parameters.AddWithValue("gate_id", request.GateId);
-        command.Parameters.AddWithValue("time_in", timeIn);
-        command.Parameters.AddWithValue("photo_path", (object?)request.PhotoInPath ?? DBNull.Value);
-        command.Parameters.AddWithValue("entry_key", (object?)idempotencyKey ?? DBNull.Value);
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
-        {
-            if (await reader.ReadAsync(cancellationToken))
+            if (idempotencyKey is null)
             {
-                return new EntryPersistResult(
-                    reader.GetString(0),
-                    new DateTimeOffset(reader.GetDateTime(1)),
-                    memberName,
-                    true);
+                throw new InvalidOperationException("Tiket gagal dibuat.");
             }
-        }
 
-        if (idempotencyKey is null)
+            var persisted = await FindExistingEntryAsync(
+                connection, transaction, request.GateId, idempotencyKey, requestFingerprint, cancellationToken);
+            if (persisted is null)
+            {
+                throw new InvalidOperationException("Tiket idempotent tidak dapat ditemukan.");
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return persisted;
+        }
+        catch
         {
-            throw new InvalidOperationException("Tiket gagal dibuat.");
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
         }
-
-        var persisted = await FindExistingEntryAsync(connection, request.GateId, idempotencyKey, cancellationToken);
-        if (persisted is null)
-        {
-            throw new InvalidOperationException("Tiket idempotent tidak dapat ditemukan.");
-        }
-
-        return persisted;
     }
 
     private static async Task<EntryPersistResult?> FindExistingEntryAsync(
         NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
         string gateId,
         string idempotencyKey,
+        string requestFingerprint,
         CancellationToken cancellationToken)
     {
         const string existingSql = """
-            SELECT t.ticket_id, t.time_in, m.full_name
+            SELECT t.ticket_id, t.time_in, m.full_name, t.entry_request_fingerprint
             FROM transactions t
             LEFT JOIN members m ON m.id = t.member_id
             WHERE t.gate_in_id = @gate_id AND t.entry_idempotency_key = @entry_key
               AND t.payment_status = 'UNPAID'
             """;
-        await using var existingCommand = new NpgsqlCommand(existingSql, connection);
+        await using var existingCommand = new NpgsqlCommand(existingSql, connection, transaction);
         existingCommand.Parameters.AddWithValue("gate_id", gateId);
         existingCommand.Parameters.AddWithValue("entry_key", idempotencyKey);
         await using var existingReader = await existingCommand.ExecuteReaderAsync(cancellationToken);
         if (!await existingReader.ReadAsync(cancellationToken))
         {
             return null;
+        }
+
+        if (!existingReader.IsDBNull(3) &&
+            !string.Equals(existingReader.GetString(3), requestFingerprint, StringComparison.Ordinal))
+        {
+            throw new IdempotencyConflictException(
+                "IdempotencyKey entry sudah digunakan dengan payload yang berbeda.");
         }
 
         return new EntryPersistResult(

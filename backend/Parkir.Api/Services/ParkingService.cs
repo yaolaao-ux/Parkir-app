@@ -7,7 +7,8 @@ public sealed class ParkingService(
     ParkingRepository repository,
     AdminService adminService,
     BusinessClock clock,
-    IConfiguration configuration)
+    IConfiguration configuration,
+    ILogger<ParkingService> logger)
 {
     public async Task<EntryResponse> CreateEntryAsync(EntryRequest request, CancellationToken cancellationToken)
     {
@@ -22,10 +23,20 @@ public sealed class ParkingService(
         }
 
         var timeIn = clock.UtcNow;
-        var ticketId = $"TKT-{clock.Now:yyyyMMdd}-{Guid.NewGuid():N}"[..21];
-        var result = await repository.CreateEntryAsync(
-            ticketId, request, timeIn, idempotencyKey, cancellationToken);
-        return new EntryResponse(result.TicketId, result.TimeIn, result.MemberName, result.IsNew);
+        var ticketId = TicketIdGenerator.Create(clock.Now);
+        try
+        {
+            var result = await repository.CreateEntryAsync(
+                ticketId, request, timeIn, idempotencyKey, EntryRequestFingerprint.Create(request), cancellationToken);
+            return new EntryResponse(result.TicketId, result.TimeIn, result.MemberName, result.IsNew);
+        }
+        catch (IdempotencyConflictException exception)
+        {
+            logger.LogWarning(
+                "Entry idempotency conflict untuk gate {GateId} dan key {IdempotencyKey}: {Message}",
+                request.GateId, request.IdempotencyKey, exception.Message);
+            throw;
+        }
     }
 
     public async Task<QuoteResponse> GetQuoteAsync(

@@ -3,7 +3,7 @@ using Parkir.Api.Models;
 
 namespace Parkir.Api.Services;
 
-public sealed class AdminService(AdminRepository repository, AuditRepository auditRepository, BusinessClock clock)
+public sealed class AdminService(AdminRepository repository, BusinessClock clock)
 {
     public Task<IReadOnlyList<GateDto>> GetGatesAsync(CancellationToken cancellationToken) =>
         repository.GetGatesAsync(cancellationToken);
@@ -12,14 +12,7 @@ public sealed class AdminService(AdminRepository repository, AuditRepository aud
         GateInput input, long actorId, string? sourceIp, CancellationToken cancellationToken)
     {
         ValidateGate(input);
-        var created = await repository.CreateGateAsync(input, cancellationToken);
-        if (created)
-        {
-            await auditRepository.WriteAsync(actorId, "GATE_CREATED", "GATE", input.GateId.Trim().ToUpperInvariant(),
-                System.Text.Json.JsonSerializer.Serialize(input), sourceIp, cancellationToken);
-        }
-
-        return created;
+        return await repository.CreateGateAsync(input, actorId, sourceIp, cancellationToken);
     }
 
     public async Task<bool> UpdateGateAsync(
@@ -31,14 +24,7 @@ public sealed class AdminService(AdminRepository repository, AuditRepository aud
             throw new ArgumentException("GateId tidak dapat diubah; daftarkan gate baru untuk mengganti ID.");
         }
 
-        var updated = await repository.UpdateGateAsync(gateId, input, cancellationToken);
-        if (updated)
-        {
-            await auditRepository.WriteAsync(actorId, "GATE_UPDATED", "GATE", gateId,
-                System.Text.Json.JsonSerializer.Serialize(input), sourceIp, cancellationToken);
-        }
-
-        return updated;
+        return await repository.UpdateGateAsync(gateId, input, actorId, sourceIp, cancellationToken);
     }
 
     public Task<bool> IsGateEnabledAsync(string gateId, string gateType, CancellationToken cancellationToken) =>
@@ -96,24 +82,14 @@ public sealed class AdminService(AdminRepository repository, AuditRepository aud
         VehicleTypeInput input, long actorId, string? sourceIp, CancellationToken cancellationToken)
     {
         ValidateVehicleType(input);
-        var id = await repository.CreateVehicleTypeAsync(input, cancellationToken);
-        await auditRepository.WriteAsync(actorId, "VEHICLE_TYPE_CREATED", "VEHICLE_TYPE", id.ToString(),
-            System.Text.Json.JsonSerializer.Serialize(input), sourceIp, cancellationToken);
-        return id;
+        return await repository.CreateVehicleTypeAsync(input, actorId, sourceIp, cancellationToken);
     }
 
     public async Task<bool> UpdateVehicleTypeAsync(
         long id, VehicleTypeInput input, long actorId, string? sourceIp, CancellationToken cancellationToken)
     {
         ValidateVehicleType(input);
-        var updated = await repository.UpdateVehicleTypeAsync(id, input, cancellationToken);
-        if (updated)
-        {
-            await auditRepository.WriteAsync(actorId, "VEHICLE_TYPE_UPDATED", "VEHICLE_TYPE", id.ToString(),
-                System.Text.Json.JsonSerializer.Serialize(input), sourceIp, cancellationToken);
-        }
-
-        return updated;
+        return await repository.UpdateVehicleTypeAsync(id, input, actorId, sourceIp, cancellationToken);
     }
 
     public Task<IReadOnlyList<MemberDto>> GetMembersAsync(CancellationToken cancellationToken) =>
@@ -128,10 +104,7 @@ public sealed class AdminService(AdminRepository repository, AuditRepository aud
             throw new ArgumentException("UID RFID, nama, plat nomor, dan tanggal aktif yang valid wajib diisi.");
         }
 
-        var id = await repository.CreateMemberAsync(input, cancellationToken);
-        await auditRepository.WriteAsync(actorId, "MEMBER_CREATED", "MEMBER", id.ToString(),
-            System.Text.Json.JsonSerializer.Serialize(input), sourceIp, cancellationToken);
-        return id;
+        return await repository.CreateMemberAsync(input, actorId, sourceIp, cancellationToken);
     }
 
     public async Task<bool> UpdateMemberStatusAsync(
@@ -143,14 +116,7 @@ public sealed class AdminService(AdminRepository repository, AuditRepository aud
             throw new ArgumentException("Status member harus ACTIVE, EXPIRED, atau SUSPENDED.");
         }
 
-        var updated = await repository.UpdateMemberStatusAsync(id, status, cancellationToken);
-        if (updated)
-        {
-            await auditRepository.WriteAsync(actorId, "MEMBER_STATUS_UPDATED", "MEMBER", id.ToString(),
-                System.Text.Json.JsonSerializer.Serialize(new { status }), sourceIp, cancellationToken);
-        }
-
-        return updated;
+        return await repository.UpdateMemberStatusAsync(id, status, actorId, sourceIp, cancellationToken);
     }
 
     private static void ValidateVehicleType(VehicleTypeInput input)

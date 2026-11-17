@@ -1,5 +1,6 @@
 using Npgsql;
 using Parkir.Api.Models;
+using System.Text.Json;
 
 namespace Parkir.Api.Data;
 
@@ -39,7 +40,11 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
         return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
     }
 
-    public async Task<bool> CreateGateAsync(GateInput input, CancellationToken cancellationToken)
+    public async Task<bool> CreateGateAsync(
+        GateInput input,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
     {
         const string sql = """
             INSERT INTO gates (gate_id, gate_type, display_name, enabled)
@@ -47,22 +52,47 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
             ON CONFLICT (gate_id) DO NOTHING
             """;
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
         AddGateParameters(command, input);
-        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        var created = await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        if (created)
+        {
+            await WriteAuditAsync(
+                connection, transaction, actorId, "GATE_CREATED", "GATE",
+                input.GateId.Trim().ToUpperInvariant(), input, sourceIp, cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return created;
     }
 
-    public async Task<bool> UpdateGateAsync(string gateId, GateInput input, CancellationToken cancellationToken)
+    public async Task<bool> UpdateGateAsync(
+        string gateId,
+        GateInput input,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
     {
         const string sql = """
             UPDATE gates SET gate_type = @gate_type, display_name = @display_name, enabled = @enabled
             WHERE gate_id = @gate_id
             """;
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
         AddGateParameters(command, input);
         command.Parameters.AddWithValue("gate_id", gateId);
-        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        var updated = await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        if (updated)
+        {
+            await WriteAuditAsync(
+                connection, transaction, actorId, "GATE_UPDATED", "GATE",
+                gateId, input, sourceIp, cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
     }
 
     private static void AddGateParameters(NpgsqlCommand command, GateInput input)
@@ -227,7 +257,11 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
         return items;
     }
 
-    public async Task<long> CreateVehicleTypeAsync(VehicleTypeInput input, CancellationToken cancellationToken)
+    public async Task<long> CreateVehicleTypeAsync(
+        VehicleTypeInput input,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
     {
         const string sql = """
             INSERT INTO vehicle_types
@@ -236,13 +270,24 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
             RETURNING id
             """;
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
         AddVehicleTypeParameters(command, input);
-        return (long)(await command.ExecuteScalarAsync(cancellationToken)
+        var id = (long)(await command.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Jenis kendaraan gagal dibuat."));
+        await WriteAuditAsync(
+            connection, transaction, actorId, "VEHICLE_TYPE_CREATED", "VEHICLE_TYPE",
+            id.ToString(), input, sourceIp, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return id;
     }
 
-    public async Task<bool> UpdateVehicleTypeAsync(long id, VehicleTypeInput input, CancellationToken cancellationToken)
+    public async Task<bool> UpdateVehicleTypeAsync(
+        long id,
+        VehicleTypeInput input,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
     {
         const string sql = """
             UPDATE vehicle_types
@@ -251,10 +296,20 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
             WHERE id = @id
             """;
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
         AddVehicleTypeParameters(command, input);
         command.Parameters.AddWithValue("id", id);
-        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        var updated = await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        if (updated)
+        {
+            await WriteAuditAsync(
+                connection, transaction, actorId, "VEHICLE_TYPE_UPDATED", "VEHICLE_TYPE",
+                id.ToString(), input, sourceIp, cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
     }
 
     public async Task<IReadOnlyList<MemberDto>> GetMembersAsync(CancellationToken cancellationToken)
@@ -282,7 +337,11 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
         return items;
     }
 
-    public async Task<long> CreateMemberAsync(MemberInput input, CancellationToken cancellationToken)
+    public async Task<long> CreateMemberAsync(
+        MemberInput input,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
     {
         const string sql = """
             INSERT INTO members (rfid_uid, full_name, license_plate, vehicle_type_id, expired_date)
@@ -290,24 +349,45 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
             RETURNING id
             """;
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("uid", input.RfidUid.Trim());
         command.Parameters.AddWithValue("name", input.FullName.Trim());
         command.Parameters.AddWithValue("plate", input.LicensePlate.Trim().ToUpperInvariant());
         command.Parameters.AddWithValue("vehicle_type_id", input.VehicleTypeId is null ? DBNull.Value : input.VehicleTypeId.Value);
         command.Parameters.AddWithValue("expired", input.ExpiredDate);
-        return (long)(await command.ExecuteScalarAsync(cancellationToken)
+        var id = (long)(await command.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Member gagal dibuat."));
+        await WriteAuditAsync(
+            connection, transaction, actorId, "MEMBER_CREATED", "MEMBER",
+            id.ToString(), input, sourceIp, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return id;
     }
 
-    public async Task<bool> UpdateMemberStatusAsync(long id, string status, CancellationToken cancellationToken)
+    public async Task<bool> UpdateMemberStatusAsync(
+        long id,
+        string status,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
     {
         const string sql = "UPDATE members SET status = @status WHERE id = @id";
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("status", status);
         command.Parameters.AddWithValue("id", id);
-        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        var updated = await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        if (updated)
+        {
+            await WriteAuditAsync(
+                connection, transaction, actorId, "MEMBER_STATUS_UPDATED", "MEMBER",
+                id.ToString(), new { status }, sourceIp, cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
     }
 
     private static void AddVehicleTypeParameters(NpgsqlCommand command, VehicleTypeInput input)
@@ -318,5 +398,30 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
         command.Parameters.AddWithValue("grace", input.GracePeriodMinutes);
         command.Parameters.AddWithValue("lost", input.LostTicketFee);
         command.Parameters.AddWithValue("daily", input.MaxDailyRate);
+    }
+
+    private static async Task WriteAuditAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        long actorId,
+        string action,
+        string entityType,
+        string entityId,
+        object details,
+        string? sourceIp,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, source_ip)
+            VALUES (@actor_id, @action, @entity_type, @entity_id, @details::jsonb, @source_ip::inet)
+            """;
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("actor_id", actorId);
+        command.Parameters.AddWithValue("action", action);
+        command.Parameters.AddWithValue("entity_type", entityType);
+        command.Parameters.AddWithValue("entity_id", entityId);
+        command.Parameters.AddWithValue("details", JsonSerializer.Serialize(details));
+        command.Parameters.AddWithValue("source_ip", (object?)sourceIp ?? DBNull.Value);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

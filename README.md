@@ -94,7 +94,7 @@ curl -X POST http://localhost:5080/api/entries \
   -d '{"gateId":"GATE-IN-01","vehicleTypeId":1,"photoInPath":null,"rfidUid":null,"idempotencyKey":"GATE-IN-01-12345"}'
 ```
 
-`idempotencyKey` unik per gate mencegah tiket ganda saat firmware mengulang request setelah timeout. Request dengan kunci yang sama mengembalikan tiket pertama dengan `isNew=false`.
+`idempotencyKey` unik per gate mencegah tiket ganda saat firmware mengulang request setelah timeout. Request dengan kunci dan payload yang sama mengembalikan tiket pertama dengan `isNew=false`; kunci yang sama dengan gate/jenis/RFID berbeda ditolak `409`. Untuk member RFID, satu member hanya boleh memiliki satu sesi aktif; pelanggaran ditolak dan dicatat.
 
 Checkout reguler mengirim `gateId`, `paymentMethod`, `lostTicket:false`, `identityVerified:false`, `photoOutPath:null`, `idempotencyKey` berupa UUID, `vehicleTypeId`, `licensePlate`, `overrideReason`, dan `expectedTotalFee`. Plat nomor wajib diisi; untuk masa transisi client lama, validasi server dapat dimatikan sementara dengan `Checkout__RequireLicensePlate=false`. Jika `vehicleTypeId` berbeda dari kelas tiket, `overrideReason` wajib diisi 5-200 karakter; server menyimpan kelas asal, tarif asal, alasan, dan selisih tarif di audit. `expectedTotalFee` adalah total yang dilihat kasir; jika tarif berubah sebelum checkout, server menolak dengan `400` agar kasir memuat ulang tiket dan tidak terjadi kurang bayar. Karcis hilang harus mengirim `lostTicket:true` serta `identityVerified:true`. Kunci idempotency yang sama akan mengembalikan hasil checkout pertama, sehingga retry setelah timeout tidak menggandakan transaksi.
 
@@ -180,10 +180,11 @@ Printer tiket masuk menggunakan ESC/POS melalui TCP port 9100. Pembukaan palang 
 ## Deploy dan rollback
 
 1. Backup database sebelum deploy.
-2. Deploy API. Migration `002`-`009` diterapkan otomatis oleh runner dan dicatat di `schema_migrations`; cek `GET /health` sampai `200`.
+2. Deploy API. Migration `002`-`010` diterapkan otomatis oleh runner dan dicatat di `schema_migrations`; cek `GET /health` sampai `200`.
 3. Deploy POS baru. Verifikasi login ulang, antrean checkout, cetak struk, dan relay di bench.
 4. Rollback aplikasi dilakukan dengan mengembalikan binary API/POS sebelumnya. Kolom baru bersifat nullable dan field request baru opsional, sehingga rollback binary tidak memerlukan drop column. Migration bersifat forward-only; jangan menghapus `schema_migrations`.
 5. Saat masa transisi dari POS lama yang belum mengirim plat, set `Checkout__RequireLicensePlate=false` pada API baru, deploy POS baru, lalu kembalikan ke `true`.
+6. Migration anti-passback `010` akan menolak startup bila database masih memiliki lebih dari satu sesi aktif untuk member yang sama. Selesaikan sesi duplikat melalui prosedur operasional sebelum deploy; jangan menghapus data transaksi secara manual.
 
 ## Batas contoh
 

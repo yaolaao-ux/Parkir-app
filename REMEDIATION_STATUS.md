@@ -124,3 +124,92 @@ Tidak ada perubahan source code API/POS/firmware, migration, atau data pada Gelo
 ## Rekomendasi gelombang berikutnya
 
 Gelombang 1 — Transaction integrity: verifikasi dan selesaikan anti-passback, atomic audit untuk mutasi admin, penguatan entropi ticket ID, serta integration test PostgreSQL untuk entry/checkout idempotency dan concurrency.
+
+---
+
+# Gelombang 1 — Transaction integrity
+
+## Baseline
+
+- Branch kerja: `fix/transaction-integrity`
+- Commit awal: `602e557` (`chore: add remediation baseline and secret scan`)
+- Commit akhir: branch head setelah commit Gelombang 1 (lihat `git log -1 --oneline`)
+- Working tree saat baseline: bersih
+- Migration baru: `010_add_anti_passback_index.sql`
+
+## Temuan yang diverifikasi
+
+| ID | Status | Bukti ringkas |
+|---|---|---|
+| R-04 — snapshot tarif | **FIXED** | Snapshot sudah ada sejak `508b805`; kalkulasi memakai snapshot sesi. |
+| R-05 — entry idempotency | **FIXED + diperkuat** | Key per gate, fingerprint payload, dan transaksi database; retry dengan payload berbeda ditolak `409`. |
+| R-06 — checkout/payment concurrency | **PARTIAL** | Update memakai predikat `UNPAID` + `time_out IS NULL`, idempotency checkout, dan unique `checkout_id`. Integration test PostgreSQL dua kasir belum dijalankan. |
+| R-07 — audit non-atomic | **FIXED untuk mutasi admin** | Gate, vehicle type, dan member mutation + audit ditulis dalam satu transaksi di `AdminRepository`. Checkout/void sudah atomic. |
+| R-08 — anti-passback | **PARTIAL** | Unique partial index `ux_transactions_active_member` dan `SELECT ... FOR UPDATE` per member. Berlaku untuk entry RFID/member; kendaraan non-member belum memiliki identitas plat di entry. |
+| R-09 — entropi tiket | **FIXED** | `TicketIdGenerator` memakai GUID 128-bit penuh; panjang ID 45 karakter; test 1.000 ID unik lulus. |
+
+## Perubahan yang dilakukan
+
+| File | Ringkasan |
+|---|---|
+| `database/migrations/010_add_anti_passback_index.sql` | Preflight duplikat sesi member, unique partial index anti-passback, kolom fingerprint entry. |
+| `database/schema.sql` | Index anti-passback dan kolom `entry_request_fingerprint`. |
+| `backend/Parkir.Api/Services/TicketIdGenerator.cs` | Generator ticket ID 128-bit dengan tanggal bisnis. |
+| `backend/Parkir.Api/Services/EntryRequestFingerprint.cs` | Fingerprint kanonik gate/vehicle/RFID, tanpa foto agar retry foto baru tetap valid. |
+| `backend/Parkir.Api/Services/IdempotencyConflictException.cs` | Exception khusus untuk konflik key/payload. |
+| `backend/Parkir.Api/Services/ParkingService.cs` | Memakai generator/fingerprint, logging konflik, dan validasi yang sudah ada. |
+| `backend/Parkir.Api/Data/ParkingRepository.cs` | Transaksi entry, row lock member, anti-passback check, fingerprint, dan commit/rollback eksplisit. |
+| `backend/Parkir.Api/Data/AdminRepository.cs` | Mutasi gate/vehicle/member dan audit dalam satu transaksi. |
+| `backend/Parkir.Api/Services/AdminService.cs` | Menghapus audit terpisah; meneruskan actor/source ke repository. |
+| `backend/Parkir.Api/Controllers/ParkingController.cs` | Konflik idempotency entry mengembalikan `409`. |
+| `tests/Parkir.Tests/Program.cs` | Test ticket ID dan fingerprint; jumlah migration menjadi 9. |
+| `README.md` | Migration runner mencakup `002`–`010`. |
+
+## Database
+
+- Migration: `010_add_anti_passback_index.sql`.
+- Dampak data: menambah kolom nullable dan unique partial index; preflight gagal jika sudah ada lebih dari satu sesi aktif untuk member yang sama.
+- Cara menjalankan: otomatis oleh `DatabaseInitializer` saat API start; backup sebelum deploy.
+- Cara rollback/pemulihan: drop index/kolom hanya setelah backup dan persetujuan; migration bersifat forward-only. Jika preflight gagal, selesaikan sesi duplikat terlebih dahulu, jangan menghapus data.
+
+## Pengujian
+
+| Test | Perintah | Hasil |
+|---|---|---|
+| Build API Release | `dotnet build backend/Parkir.Api/Parkir.Api.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Build POS WPF Release | `dotnet build pos/Parkir.Pos/Parkir.Pos.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Regression tests | `dotnet run --project tests/Parkir.Tests/Parkir.Tests.csproj --configuration Release` | **PASS** — 23/23 |
+| Secret scan | `bash tools/scan-secrets.sh` | **PASS** |
+| Integration tests PostgreSQL | belum dijalankan | **NOT RUN** — server database tidak tersedia |
+| Firmware build | `pio run` | **BLOCKED** — PlatformIO tidak terpasang |
+
+## Acceptance criteria Gelombang 1
+
+| Kriteria | Status |
+|---|---|
+| Retry entry dengan key sama tidak membuat session baru | **PARTIAL** — kode dan kontrak diuji; DB integration NOT RUN |
+| Key sama dengan payload berbeda ditolak | **PASS** — fingerprint + `409`; unit test lulus |
+| Perubahan tarif tidak mengubah sesi aktif | **PASS** — snapshot code + unit test tarif; DB integration NOT RUN |
+| Dua kasir tidak dapat menyelesaikan sesi yang sama | **PARTIAL** — invariant SQL ada; DB concurrency test NOT RUN |
+| Mutasi admin + audit atomic | **PARTIAL** — transaksi kode terverifikasi build; DB rollback test NOT RUN |
+| Anti-passback member | **PARTIAL** — index + lock kode; DB integration NOT RUN |
+| Ticket ID kuat | **PASS** — unit test 128-bit/45 karakter |
+| Regression test lulus | **PASS** — 23/23 |
+
+## Risiko tersisa
+
+1. **Integration test PostgreSQL belum dijalankan**; migration 010 dan concurrency belum dibuktikan pada database nyata.
+2. **Anti-passback non-member belum ada** karena entry belum memiliki identitas plat/RFID; perlu keputusan desain bila kendaraan non-member harus dibatasi.
+3. **Payment lifecycle** belum memiliki status pending/refund; model saat ini final `PAID/MEMBER/LOST_TICKET/VOID`.
+4. **Audit login** masih ditulis terpisah dari autentikasi (tidak ada mutasi bisnis); tidak termasuk atomic mutation admin.
+5. Migration 010 akan menolak startup bila database sudah memiliki sesi aktif ganda; ini disengaja agar data tidak rusak, tetapi memerlukan prosedur rekonsiliasi operator.
+
+## Tindakan yang membutuhkan persetujuan
+
+- Menyediakan database test PostgreSQL untuk integration test dan uji migration dari schema lama.
+- Menentukan aturan anti-passback untuk kendaraan non-member.
+- Menentukan apakah status payment pending/refund diperlukan sebelum pilot.
+
+## Rekomendasi gelombang berikutnya
+
+Gelombang 2 — Security hardening: hapus fallback connection string, batasi port database, aktifkan TLS sesuai topologi, kredensial unik per perangkat, revocation, dan pengujian authorization.

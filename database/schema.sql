@@ -80,6 +80,7 @@ CREATE TABLE transactions (
     member_id BIGINT REFERENCES members(id),
     gate_in_id VARCHAR(20) NOT NULL,
     entry_idempotency_key VARCHAR(100),
+    entry_request_fingerprint VARCHAR(64),
     gate_out_id VARCHAR(20),
     time_in TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     time_out TIMESTAMPTZ,
@@ -107,6 +108,11 @@ CREATE TABLE transactions (
 
 CREATE INDEX ix_transactions_active_ticket
     ON transactions (ticket_id) WHERE time_out IS NULL;
+CREATE UNIQUE INDEX ux_transactions_active_member
+    ON transactions (member_id)
+    WHERE member_id IS NOT NULL
+      AND time_out IS NULL
+      AND payment_status = 'UNPAID';
 CREATE UNIQUE INDEX ux_transactions_entry_idempotency
     ON transactions (gate_in_id, entry_idempotency_key)
     WHERE entry_idempotency_key IS NOT NULL;

@@ -103,6 +103,29 @@ var tests = new (string Name, Action Run)[]
             """, jsonOptions)!;
         AssertEqual("GATE-IN-01-12345", request.IdempotencyKey);
     }),
+    ("ticket id memakai 128-bit acak dan tanggal bisnis", () =>
+    {
+        var businessTime = new DateTimeOffset(2026, 11, 18, 1, 2, 3, TimeSpan.FromHours(7));
+        var ids = Enumerable.Range(0, 1000)
+            .Select(_ => TicketIdGenerator.Create(businessTime))
+            .ToList();
+        AssertEqual(45, ids[0].Length);
+        AssertTrue(ids[0].StartsWith("TKT-20261118-", StringComparison.Ordinal));
+        AssertEqual(1000, ids.Distinct().Count());
+    }),
+    ("entry fingerprint stabil tetapi berbeda untuk payload berbeda", () =>
+    {
+        var request = new EntryRequest("GATE-IN-01", 1, "2026-11-18/a.jpg", "ABC123");
+        var same = new EntryRequest("gate-in-01", 1, "2026-11-18/b.jpg", "abc123");
+        var differentGate = new EntryRequest("GATE-IN-02", 1, "2026-11-18/a.jpg", "ABC123");
+        var differentType = new EntryRequest("GATE-IN-01", 2, "2026-11-18/a.jpg", "ABC123");
+        var differentRfid = new EntryRequest("GATE-IN-01", 1, "2026-11-18/a.jpg", "XYZ999");
+        AssertEqual(EntryRequestFingerprint.Create(request), EntryRequestFingerprint.Create(same));
+        AssertTrue(EntryRequestFingerprint.Create(request) != EntryRequestFingerprint.Create(differentGate));
+        AssertTrue(EntryRequestFingerprint.Create(request) != EntryRequestFingerprint.Create(differentType));
+        AssertTrue(EntryRequestFingerprint.Create(request) != EntryRequestFingerprint.Create(differentRfid));
+        AssertEqual(64, EntryRequestFingerprint.Create(request).Length);
+    }),
     ("antrean checkout bertransisi PENDING ke CONFIRMED ke HARDWARE_DONE", () =>
         WithQueue(queue =>
         {
@@ -181,9 +204,9 @@ var tests = new (string Name, Action Run)[]
                 name.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
-        AssertEqual(8, resources.Count);
+        AssertEqual(9, resources.Count);
         AssertEqual("Migrations.002_add_checkout_idempotency.sql", resources[0]);
-        AssertEqual("Migrations.009_add_tariff_snapshot.sql", resources[^1]);
+        AssertEqual("Migrations.010_add_anti_passback_index.sql", resources[^1]);
     }),
     ("endpoint perangkat menolak request tanpa API key termasuk trailing slash", () =>
     {
@@ -317,5 +340,13 @@ static void AssertEqual<T>(T expected, T actual)
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
     {
         throw new Exception($"Expected: {expected}; Actual: {actual}");
+    }
+}
+
+static void AssertTrue(bool condition, string? message = null)
+{
+    if (!condition)
+    {
+        throw new Exception(message ?? "Expected condition to be true.");
     }
 }

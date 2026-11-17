@@ -32,6 +32,10 @@ public sealed class ParkingController(ParkingService parkingService, AdminServic
         {
             return BadRequest(new { error = exception.Message });
         }
+        catch (IdempotencyConflictException exception)
+        {
+            return Conflict(new { error = exception.Message });
+        }
         catch (InvalidOperationException exception)
         {
             return BadRequest(new { error = exception.Message });
