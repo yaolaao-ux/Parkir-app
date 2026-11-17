@@ -18,7 +18,7 @@ public partial class LoginWindow : Window
         InitializeComponent();
         var address = Environment.GetEnvironmentVariable("PARKIR_API_URL") ?? "http://127.0.0.1:5080/";
         _client = new HttpClient { BaseAddress = new Uri(address), Timeout = TimeSpan.FromSeconds(5) };
-        var apiKey = Environment.GetEnvironmentVariable("PARKIR_API_KEY");
+        var apiKey = PosSettings.DeviceKey;
         if (!string.IsNullOrWhiteSpace(apiKey))
         {
             _client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
@@ -48,9 +48,9 @@ public partial class LoginWindow : Window
 
     private async Task LoginAsync()
     {
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PARKIR_API_KEY")))
+        if (string.IsNullOrWhiteSpace(PosSettings.DeviceKey))
         {
-            MessageLabel.Text = "PARKIR_API_KEY belum dikonfigurasi.";
+            MessageLabel.Text = "PARKIR_DEVICE_KEY belum dikonfigurasi.";
             return;
         }
 

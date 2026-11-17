@@ -27,6 +27,7 @@ CREATE TABLE users (
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(100) NOT NULL,
     role VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'CASHIER')),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -54,6 +55,19 @@ CREATE TABLE devices (
 );
 
 CREATE INDEX ix_devices_last_seen ON devices (last_seen DESC);
+
+CREATE TABLE device_credentials (
+    device_id VARCHAR(50) PRIMARY KEY,
+    key_hash TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    rotated_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ
+);
+
+CREATE INDEX ix_device_credentials_active
+    ON device_credentials (device_id)
+    WHERE enabled AND revoked_at IS NULL;
 
 CREATE TABLE gates (
     gate_id VARCHAR(20) PRIMARY KEY,

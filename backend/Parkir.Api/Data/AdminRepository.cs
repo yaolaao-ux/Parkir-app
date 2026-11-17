@@ -390,6 +390,31 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
         return updated;
     }
 
+    public async Task<bool> SetUserStatusAsync(
+        string username,
+        bool isActive,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
+    {
+        const string sql = "UPDATE users SET is_active = @is_active WHERE username = @username";
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("is_active", isActive);
+        command.Parameters.AddWithValue("username", username);
+        var updated = await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        if (updated)
+        {
+            await WriteAuditAsync(
+                connection, transaction, actorId, "USER_STATUS_UPDATED", "USER",
+                username, new { isActive }, sourceIp, cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
+    }
+
     private static void AddVehicleTypeParameters(NpgsqlCommand command, VehicleTypeInput input)
     {
         command.Parameters.AddWithValue("name", input.TypeName.Trim());

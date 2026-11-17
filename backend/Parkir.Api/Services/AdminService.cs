@@ -1,9 +1,13 @@
 using Parkir.Api.Data;
 using Parkir.Api.Models;
+using Parkir.Api.Security;
 
 namespace Parkir.Api.Services;
 
-public sealed class AdminService(AdminRepository repository, BusinessClock clock)
+public sealed class AdminService(
+    AdminRepository repository,
+    DeviceCredentialRepository credentialRepository,
+    BusinessClock clock)
 {
     public Task<IReadOnlyList<GateDto>> GetGatesAsync(CancellationToken cancellationToken) =>
         repository.GetGatesAsync(cancellationToken);
@@ -53,6 +57,45 @@ public sealed class AdminService(AdminRepository repository, BusinessClock clock
 
     public Task<IReadOnlyList<DeviceStatusDto>> GetDeviceStatusesAsync(CancellationToken cancellationToken) =>
         repository.GetDeviceStatusesAsync(cancellationToken);
+
+    public async Task<DeviceCredentialResponse> IssueDeviceCredentialAsync(
+        string deviceId,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
+    {
+        var normalized = ValidateDeviceId(deviceId);
+        var apiKey = DeviceKeyHasher.GenerateKey();
+        await credentialRepository.IssueAsync(
+            normalized, DeviceKeyHasher.Hash(apiKey), actorId, sourceIp, cancellationToken);
+        return new DeviceCredentialResponse(normalized, apiKey);
+    }
+
+    public Task<bool> RevokeDeviceCredentialAsync(
+        string deviceId,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
+    {
+        var normalized = ValidateDeviceId(deviceId);
+        return credentialRepository.RevokeAsync(normalized, actorId, sourceIp, cancellationToken);
+    }
+
+    public async Task<bool> SetUserStatusAsync(
+        string username,
+        bool isActive,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
+    {
+        var normalized = username?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized) || normalized.Length > 50)
+        {
+            throw new ArgumentException("Username tidak valid.");
+        }
+
+        return await repository.SetUserStatusAsync(normalized, isActive, actorId, sourceIp, cancellationToken);
+    }
 
     public Task<DashboardSummary> GetDashboardAsync(CancellationToken cancellationToken) =>
         repository.GetDashboardAsync(clock.DayStartUtc(clock.Today), clock.DayEndUtc(clock.Today), cancellationToken);
@@ -137,5 +180,17 @@ public sealed class AdminService(AdminRepository repository, BusinessClock clock
         {
             throw new ArgumentException("GateId, arah, atau nama gate tidak valid.");
         }
+    }
+
+    private static string ValidateDeviceId(string deviceId)
+    {
+        var normalized = deviceId?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized) || normalized.Length > 50 ||
+            normalized.Any(character => !char.IsLetterOrDigit(character) && character is not ('-' or '_' or '.')))
+        {
+            throw new ArgumentException("DeviceId tidak valid.");
+        }
+
+        return normalized;
     }
 }

@@ -10,7 +10,7 @@ public sealed class AuthRepository(NpgsqlDataSource dataSource)
         const string sql = """
             SELECT id, username, full_name, role, password_hash
             FROM users
-            WHERE username = @username
+            WHERE username = @username AND is_active = TRUE
             """;
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);

@@ -198,7 +198,7 @@ public partial class MainWindow : Window
         var ticketId = TicketInput.Text.Trim();
         if (!HasApiKey())
         {
-            MessageLabel.Text = "Atur environment variable PARKIR_API_KEY sebelum menggunakan POS.";
+            MessageLabel.Text = "Atur environment variable PARKIR_DEVICE_KEY sebelum menggunakan POS.";
             return;
         }
 
@@ -1147,8 +1147,7 @@ public partial class MainWindow : Window
         try
         {
             var request = new DeviceHeartbeatRequest(
-                Environment.GetEnvironmentVariable("PARKIR_DEVICE_ID") ??
-                    Environment.GetEnvironmentVariable("PARKIR_GATE_ID") ?? "GATE-OUT-01",
+                PosSettings.DeviceId,
                 "CASHIER_POS",
                 Environment.GetEnvironmentVariable("PARKIR_DEVICE_NAME") ?? $"Pos - {_session.FullName}",
                 Environment.GetEnvironmentVariable("PARKIR_APP_VERSION") ?? "1.0.0");
@@ -1309,17 +1308,18 @@ public partial class MainWindow : Window
     {
         var address = Environment.GetEnvironmentVariable("PARKIR_API_URL") ?? "http://127.0.0.1:5080/";
         var client = new HttpClient { BaseAddress = new Uri(address), Timeout = TimeSpan.FromSeconds(5) };
-        var apiKey = Environment.GetEnvironmentVariable("PARKIR_API_KEY");
+        var apiKey = PosSettings.DeviceKey;
         if (!string.IsNullOrWhiteSpace(apiKey))
         {
             client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
         }
+        client.DefaultRequestHeaders.Add("X-Device-Id", PosSettings.DeviceId);
 
         return client;
     }
 
     private static bool HasApiKey() =>
-        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PARKIR_API_KEY"));
+        !string.IsNullOrWhiteSpace(PosSettings.DeviceKey);
 
     private static string NormalizePlate(string? value) =>
         string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToUpperInvariant();
@@ -1336,7 +1336,7 @@ public partial class MainWindow : Window
     {
         if (!HasApiKey())
         {
-            ConnectionLabel.Text = "PARKIR_API_KEY belum diatur";
+            ConnectionLabel.Text = "PARKIR_DEVICE_KEY belum diatur";
             return;
         }
 

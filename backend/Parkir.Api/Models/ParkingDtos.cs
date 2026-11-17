@@ -146,6 +146,10 @@ public sealed record DeviceStatusDto(
     DateTimeOffset LastSeen,
     bool IsOnline);
 
+public sealed record DeviceCredentialResponse(string DeviceId, string ApiKey);
+
+public sealed record UserStatusInput(bool IsActive);
+
 public sealed record GateDto(
     string GateId,
     string GateType,

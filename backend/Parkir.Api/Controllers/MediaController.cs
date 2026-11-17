@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Parkir.Api.Security;
 using Parkir.Api.Services;
 
@@ -11,6 +12,7 @@ public sealed class MediaController(ImageStorageService imageStorage) : Controll
 {
     [HttpPost("entries")]
     [Authorize(AuthenticationSchemes = ApiKeyAuthenticationHandler.SchemeName)]
+    [EnableRateLimiting("device")]
     [Consumes("image/jpeg", "image/png", "image/webp")]
     [RequestSizeLimit(5 * 1024 * 1024)]
     public async Task<IActionResult> UploadEntry(CancellationToken cancellationToken)

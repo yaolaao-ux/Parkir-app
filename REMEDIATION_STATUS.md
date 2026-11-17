@@ -213,3 +213,102 @@ Gelombang 1 — Transaction integrity: verifikasi dan selesaikan anti-passback, 
 ## Rekomendasi gelombang berikutnya
 
 Gelombang 2 — Security hardening: hapus fallback connection string, batasi port database, aktifkan TLS sesuai topologi, kredensial unik per perangkat, revocation, dan pengujian authorization.
+
+---
+
+# Gelombang 2 — Security hardening
+
+## Baseline
+
+- Branch kerja: `fix/security-hardening`
+- Commit awal: `d104f1e` (`fix: harden transaction integrity and anti-passback`)
+- Commit akhir: branch head setelah commit Gelombang 2 (lihat `git log -1 --oneline`)
+- Working tree saat baseline: bersih
+- Migration baru: `011_add_device_credentials_and_user_status.sql`
+
+## Temuan yang diverifikasi/diperbaiki
+
+| ID | Status | Bukti ringkas |
+|---|---|---|
+| R-01/R-02 — fallback kredensial | **FIXED** | `ConnectionStrings:Parking` wajib; API gagal start tanpa konfigurasi. Tidak ada fallback password database. |
+| R-03 — port PostgreSQL | **FIXED** | Port `5432` dihapus dari Docker Compose; akses host hanya melalui `docker compose exec`. |
+| R-10/R-12 — API key bersama | **FIXED (kode)** | Kredensial perangkat unik di `device_credentials`; lookup per `X-Device-Id`; key disimpan sebagai PBKDF2 hash; rotasi/revocation melalui admin. |
+| R-12 — impersonasi gate | **FIXED (kode)** | Entry memvalidasi `GateId` = device terautentikasi; heartbeat memvalidasi `deviceId` payload = device terautentikasi. |
+| R-11 — user lifecycle | **PARTIAL** | Kolom `users.is_active`, login hanya untuk user aktif, endpoint admin untuk disable/enable. JWT yang sudah terbit belum dapat dicabut sebelum expiry. |
+| Security headers/rate limit | **FIXED** | CSP, nosniff, frame deny, referrer/permissions policy; rate limit endpoint perangkat dan login. |
+| TLS | **PARTIAL/BLOCKED** | Konfigurasi `Security:RequireHttps` + dokumentasi reverse proxy; sertifikat/TLS aktual belum diuji. |
+
+## Perubahan yang dilakukan
+
+| File | Ringkasan |
+|---|---|
+| `database/migrations/011_add_device_credentials_and_user_status.sql` | Tabel `device_credentials`, index aktif, kolom `users.is_active`. |
+| `database/schema.sql` | Skema kredensial perangkat dan status user. |
+| `backend/Parkir.Api/Security/ApiKeyAuthenticationHandler.cs` | Autentikasi per device + claim `device_id`; key PBKDF2; lookup DB. |
+| `backend/Parkir.Api/Security/DeviceKeyHasher.cs` | Generate/hash/verify key perangkat dengan PBKDF2-SHA256 dan fixed-time compare. |
+| `backend/Parkir.Api/Data/DeviceCredentialRepository.cs` | Issue/rotate/revoke kredensial + audit atomik. |
+| `backend/Parkir.Api/Data/AdminRepository.cs` | Status user + audit atomik. |
+| `backend/Parkir.Api/Services/AdminService.cs` | Provisioning/revocation kredensial dan status user. |
+| `backend/Parkir.Api/Controllers/AdminController.cs` | Endpoint credential perangkat dan status user. |
+| `backend/Parkir.Api/Controllers/ParkingController.cs` | Device binding untuk entry/heartbeat dan rate limit. |
+| `backend/Parkir.Api/Controllers/MediaController.cs` | Rate limit upload masuk. |
+| `backend/Parkir.Api/Program.cs` | Hapus fallback DB/global API key; security headers; HTTPS config; rate limit device. |
+| `backend/Parkir.Api/Data/AuthRepository.cs` | Tolak user nonaktif saat login. |
+| `firmware/gate_in/gate_in.ino` | Header `X-Device-Id` untuk entry/media/heartbeat; key per gate. |
+| `pos/Parkir.Pos/PosSettings.cs` | `PARKIR_DEVICE_KEY`/`PARKIR_DEVICE_ID` helpers. |
+| `pos/Parkir.Pos/MainWindow.xaml.cs` | Header device untuk API client; heartbeat memakai device ID yang sama. |
+| `pos/Parkir.Pos/LoginWindow.xaml.cs` | Device key baru dengan fallback env lama. |
+| `tests/Parkir.Tests/Program.cs` | Test PBKDF2 device key; migration count 10; test auth tanpa header tetap `401`. |
+| `README.md`, `.env.example`, `docker-compose.yml` | Dokumentasi kredensial perangkat, port DB internal, TLS, env baru. |
+
+## Database
+
+- Migration: `011_add_device_credentials_and_user_status.sql`.
+- Dampak data: menambah tabel kredensial dan kolom status user; tidak menghapus data.
+- Cara menjalankan: otomatis oleh `DatabaseInitializer`; backup sebelum deploy.
+- Rollback: aplikasi lama dapat dijalankan sebelum kredensial diaktifkan; migration forward-only dan kolom baru kompatibel.
+
+## Pengujian
+
+| Test | Perintah | Hasil |
+|---|---|---|
+| Build API Release | `dotnet build backend/Parkir.Api/Parkir.Api.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Build POS WPF Release | `dotnet build pos/Parkir.Pos/Parkir.Pos.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Regression tests | `dotnet run --project tests/Parkir.Tests/Parkir.Tests.csproj --configuration Release` | **PASS** — 25/25 |
+| Security headers | test WebApplicationFactory | **PASS** — CSP, nosniff, frame deny terkirim |
+| Secret scan | `bash tools/scan-secrets.sh` | **PASS** |
+| Device credential integration | belum dijalankan | **NOT RUN** — database PostgreSQL tidak tersedia |
+| TLS end-to-end | belum dijalankan | **BLOCKED** — sertifikat/reverse proxy belum tersedia |
+| Firmware build | `pio run` | **BLOCKED** — PlatformIO tidak terpasang |
+
+## Acceptance criteria Gelombang 2
+
+| Kriteria | Status |
+|---|---|
+| Tidak ada kredensial default production | **PASS** — fallback DB dihapus |
+| Port database tidak terekspos | **PASS** — port Compose dihapus |
+| Kredensial unik per device | **PARTIAL** — kode dan hasher diuji; DB integration NOT RUN |
+| Perangkat dicabut ditolak | **PARTIAL** — query aktif + revocation; DB integration NOT RUN |
+| Device tidak dapat menyamar sebagai gate lain | **PARTIAL** — binding controller ada; DB integration NOT RUN |
+| User nonaktif tidak dapat login | **PARTIAL** — query `is_active`; DB integration NOT RUN |
+| Security headers/rate limit | **PASS** — middleware/konfigurasi build |
+| TLS production | **BLOCKED** — konfigurasi tersedia, deployment TLS belum diuji |
+
+## Risiko tersisa
+
+1. Firmware/POS lama memakai API key global; setelah upgrade API, perangkat harus menerima kredensial unik dan dikonfigurasi ulang sebelum beroperasi.
+2. Kredensial perangkat belum memiliki masa berlaku otomatis; rotasi/revocation manual melalui admin.
+3. JWT yang sudah terbit tetap berlaku sampai expiry meskipun user dinonaktifkan. Revocation token/refresh token belum diterapkan.
+4. `Security:RequireHttps` memerlukan TLS langsung atau reverse proxy dengan forwarded headers yang benar; belum diuji.
+5. Database integration test dan uji perangkat nyata tetap belum dijalankan.
+
+## Tindakan yang membutuhkan persetujuan
+
+- Menyediakan database staging/test untuk integration test kredensial, revocation, binding, dan user disable.
+- Menyediakan sertifikat/reverse proxy TLS untuk pengujian HTTPS.
+- Menjadwalkan downtime/reflashing firmware dan provisioning kredensial perangkat.
+- Menentukan kebijakan rotasi kredensial dan pencabutan JWT.
+
+## Rekomendasi gelombang berikutnya
+
+Gelombang 3 — Gate and ticket reliability: state machine entry/print/gate, ACK command, reconnect, printer state, dan reprint/cancel dengan audit.

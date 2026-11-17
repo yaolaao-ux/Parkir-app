@@ -21,6 +21,56 @@ public sealed class AdminController(AdminService adminService) : ControllerBase
     public async Task<ActionResult<IReadOnlyList<DeviceStatusDto>>> GetDevices(CancellationToken cancellationToken) =>
         Ok(await adminService.GetDeviceStatusesAsync(cancellationToken));
 
+    [HttpPost("devices/{deviceId}/credential")]
+    public async Task<IActionResult> IssueDeviceCredential(string deviceId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var credential = await adminService.IssueDeviceCredentialAsync(
+                deviceId, GetActorId(), HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            Response.Headers.CacheControl = "no-store";
+            return Ok(credential);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpDelete("devices/{deviceId}/credential")]
+    public async Task<IActionResult> RevokeDeviceCredential(string deviceId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var revoked = await adminService.RevokeDeviceCredentialAsync(
+                deviceId, GetActorId(), HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            return revoked ? NoContent() : NotFound();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpPut("users/{username}/status")]
+    public async Task<IActionResult> SetUserStatus(
+        string username,
+        UserStatusInput input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var updated = await adminService.SetUserStatusAsync(
+                username, input.IsActive, GetActorId(),
+                HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            return updated ? NoContent() : NotFound();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
     [HttpGet("gates")]
     public async Task<ActionResult<IReadOnlyList<GateDto>>> GetGates(CancellationToken cancellationToken) =>
         Ok(await adminService.GetGatesAsync(cancellationToken));

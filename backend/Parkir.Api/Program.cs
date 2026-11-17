@@ -13,12 +13,11 @@ using System.Text;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
-var connectionString = builder.Configuration.GetConnectionString("Parking")
-    ?? "Host=localhost;Port=5432;Database=parkir;Username=postgres;Password=postgres";
-var apiKey = builder.Configuration["Security:ApiKey"];
-if (string.IsNullOrWhiteSpace(apiKey))
+var connectionString = builder.Configuration.GetConnectionString("Parking");
+if (string.IsNullOrWhiteSpace(connectionString))
 {
-    throw new InvalidOperationException("Security:ApiKey wajib dikonfigurasi sebelum API dijalankan.");
+    throw new InvalidOperationException(
+        "ConnectionStrings:Parking wajib dikonfigurasi. Fallback kredensial database tidak diizinkan.");
 }
 var jwtSigningKey = builder.Configuration["Security:JwtSigningKey"];
 if (string.IsNullOrWhiteSpace(jwtSigningKey) || Encoding.UTF8.GetByteCount(jwtSigningKey) < 32)
@@ -34,6 +33,7 @@ builder.Services.AddScoped<ParkingService>();
 builder.Services.AddScoped<AuthRepository>();
 builder.Services.AddScoped<AuditRepository>();
 builder.Services.AddScoped<AdminRepository>();
+builder.Services.AddScoped<DeviceCredentialRepository>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AdminService>();
 builder.Services.AddSingleton(sp => new ImageStorageService(
@@ -52,6 +52,19 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0,
             AutoReplenishment = true
         }));
+    options.AddPolicy("device", context =>
+    {
+        var partition = context.Connection.RemoteIpAddress?.ToString() ?? "unknown-device";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partition,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 120,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
     options.OnRejected = async (context, cancellationToken) =>
     {
         context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
@@ -114,6 +127,21 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
     context.Response.ContentType = "application/json; charset=utf-8";
     await context.Response.WriteAsJsonAsync(new { error = message, traceId = context.TraceIdentifier });
 }));
+if (app.Configuration.GetValue("Security:RequireHttps", false))
+{
+    app.UseHsts();
+    app.UseHttpsRedirection();
+}
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+    context.Response.Headers["Content-Security-Policy"] =
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'";
+    await next();
+});
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseRouting();

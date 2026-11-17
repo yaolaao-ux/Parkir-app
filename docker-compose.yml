@@ -7,8 +7,6 @@ services:
       POSTGRES_USER: parkir
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       TZ: ${BUSINESS_TIME_ZONE:-Asia/Jakarta}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
@@ -27,8 +25,8 @@ services:
     environment:
       ASPNETCORE_HTTP_PORTS: 8080
       ConnectionStrings__Parking: "Host=db;Port=5432;Database=parkir;Username=parkir;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
-      Security__ApiKey: ${API_KEY:?Set API_KEY in .env}
       Security__JwtSigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in .env}
+      Security__RequireHttps: ${REQUIRE_HTTPS:-false}
       Storage__ImageRoot: /var/lib/parkir/images
       Business__TimeZone: ${BUSINESS_TIME_ZONE:-Asia/Jakarta}
       TZ: ${BUSINESS_TIME_ZONE:-Asia/Jakarta}

@@ -13,7 +13,8 @@ constexpr char WIFI_PASSWORD[] = "ganti-password";
 constexpr char API_URL[] = "http://192.168.1.10:5080/api/entries";
 constexpr char API_MEDIA_URL[] = "http://192.168.1.10:5080/api/media/entries";
 constexpr char API_HEARTBEAT_URL[] = "http://192.168.1.10:5080/api/devices/heartbeat";
-constexpr char API_KEY[] = "ganti-api-key";
+// Isi dengan credential unik yang diterbitkan admin untuk gate ini.
+constexpr char API_KEY[] = "ganti-device-api-key";
 constexpr char CAMERA_SNAPSHOT_URL[] = "http://192.168.1.60/snapshot.jpg";
 constexpr char DEFAULT_GATE_ID[] = "GATE-IN-01";
 constexpr char DEVICE_NAME[] = "Gate Masuk 01";
@@ -44,6 +45,11 @@ bool stableButtonState = HIGH;
 uint32_t lastButtonChangeAt = 0;
 uint32_t gateOpenedAt = 0;
 uint32_t lastHeartbeatAt = 0;
+
+void addDeviceHeaders(HTTPClient &http) {
+  http.addHeader("X-Device-Id", gateId);
+  http.addHeader("X-API-Key", API_KEY);
+}
 
 bool vehiclePresent() {
   return digitalRead(LOOP_SENSOR_PIN) == LOW;
@@ -119,7 +125,7 @@ bool capturePhoto(String &photoPath) {
     return false;
   }
   upload.addHeader("Content-Type", contentType);
-  upload.addHeader("X-API-Key", API_KEY);
+  addDeviceHeaders(upload);
   const int uploadStatus = upload.sendRequest("POST", imageStream, imageLength);
   const String response = uploadStatus > 0 ? upload.getString() : "";
   upload.end();
@@ -215,7 +221,7 @@ bool createEntry(const String &rfidUid, const String &idempotencyKey, String &ti
     return false;
   }
   http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-API-Key", API_KEY);
+  addDeviceHeaders(http);
   const int statusCode = http.POST(body);
   const String response = statusCode > 0 ? http.getString() : "";
   http.end();
@@ -254,7 +260,7 @@ void sendHeartbeat() {
     return;
   }
   http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-API-Key", API_KEY);
+  addDeviceHeaders(http);
   const int statusCode = http.POST(body);
   if (statusCode != HTTP_CODE_NO_CONTENT) {
     Serial.printf("Heartbeat gate gagal, HTTP %d\n", statusCode);

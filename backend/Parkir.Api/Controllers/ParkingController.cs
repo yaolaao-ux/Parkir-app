@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Parkir.Api.Models;
 using Parkir.Api.Security;
 using Parkir.Api.Services;
@@ -18,9 +19,17 @@ public sealed class ParkingController(ParkingService parkingService, AdminServic
 
     [HttpPost("entries")]
     [Authorize(AuthenticationSchemes = ApiKeyAuthenticationHandler.SchemeName)]
+    [EnableRateLimiting("device")]
     [ProducesResponseType<EntryResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> CreateEntry(EntryRequest request, CancellationToken cancellationToken)
     {
+        var deviceId = User.FindFirstValue(ApiKeyAuthenticationHandler.DeviceIdClaim);
+        if (string.IsNullOrWhiteSpace(deviceId) ||
+            !string.Equals(deviceId, request.GateId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
+        }
+
         try
         {
             var result = await parkingService.CreateEntryAsync(request, cancellationToken);
@@ -138,6 +147,7 @@ public sealed class ParkingController(ParkingService parkingService, AdminServic
 
     [HttpGet("members/{rfidUid}/verify")]
     [Authorize(AuthenticationSchemes = ApiKeyAuthenticationHandler.SchemeName)]
+    [EnableRateLimiting("device")]
     public async Task<ActionResult<MemberVerificationResponse>> VerifyMember(
         string rfidUid,
         CancellationToken cancellationToken) =>
@@ -150,8 +160,16 @@ public sealed class DeviceController(AdminService adminService) : ControllerBase
 {
     [HttpPost("heartbeat")]
     [Authorize(AuthenticationSchemes = ApiKeyAuthenticationHandler.SchemeName)]
+    [EnableRateLimiting("device")]
     public async Task<IActionResult> Heartbeat(DeviceHeartbeatRequest request, CancellationToken cancellationToken)
     {
+        var deviceId = User.FindFirstValue(ApiKeyAuthenticationHandler.DeviceIdClaim);
+        if (string.IsNullOrWhiteSpace(deviceId) ||
+            !string.Equals(deviceId, request.DeviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
+        }
+
         try
         {
             await adminService.RecordDeviceHeartbeatAsync(

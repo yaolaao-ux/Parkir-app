@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Parkir.Api.Models;
+using Parkir.Api.Security;
 using Parkir.Api.Services;
 using Parkir.Pos;
 
@@ -126,6 +127,15 @@ var tests = new (string Name, Action Run)[]
         AssertTrue(EntryRequestFingerprint.Create(request) != EntryRequestFingerprint.Create(differentRfid));
         AssertEqual(64, EntryRequestFingerprint.Create(request).Length);
     }),
+    ("device key hanya dapat diverifikasi dengan key yang benar", () =>
+    {
+        var key = DeviceKeyHasher.GenerateKey();
+        var hash = DeviceKeyHasher.Hash(key);
+        AssertTrue(DeviceKeyHasher.Verify(hash, key));
+        AssertTrue(!DeviceKeyHasher.Verify(hash, key + "x"));
+        AssertTrue(hash != key);
+        AssertTrue(DeviceKeyHasher.GenerateKey() != DeviceKeyHasher.GenerateKey());
+    }),
     ("antrean checkout bertransisi PENDING ke CONFIRMED ke HARDWARE_DONE", () =>
         WithQueue(queue =>
         {
@@ -204,9 +214,9 @@ var tests = new (string Name, Action Run)[]
                 name.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
-        AssertEqual(9, resources.Count);
+        AssertEqual(10, resources.Count);
         AssertEqual("Migrations.002_add_checkout_idempotency.sql", resources[0]);
-        AssertEqual("Migrations.010_add_anti_passback_index.sql", resources[^1]);
+        AssertEqual("Migrations.011_add_device_credentials_and_user_status.sql", resources[^1]);
     }),
     ("endpoint perangkat menolak request tanpa API key termasuk trailing slash", () =>
     {
@@ -240,6 +250,16 @@ var tests = new (string Name, Action Run)[]
 
         using var memberResponse = client.GetAsync("/api/members/TEST/verify").GetAwaiter().GetResult();
         AssertEqual(HttpStatusCode.Unauthorized, memberResponse.StatusCode);
+    }),
+    ("security headers tersedia pada dashboard", () =>
+    {
+        using var factory = CreateFactory();
+        using var client = factory.CreateClient();
+        using var response = client.GetAsync("/").GetAwaiter().GetResult();
+        AssertEqual(HttpStatusCode.OK, response.StatusCode);
+        AssertTrue(response.Headers.Contains("X-Content-Type-Options"));
+        AssertTrue(response.Headers.Contains("X-Frame-Options"));
+        AssertTrue(response.Headers.Contains("Content-Security-Policy"));
     })
 };
 
@@ -293,7 +313,6 @@ static WebApplicationFactory<Parkir.Api.Services.ParkingService> CreateFactory()
         builder.UseContentRoot(FindApiRoot());
         builder.UseSetting("ConnectionStrings:Parking",
             "Host=127.0.0.1;Port=5999;Database=parkir;Username=test;Password=test");
-        builder.UseSetting("Security:ApiKey", "test-api-key");
         builder.UseSetting("Security:JwtSigningKey", "01234567890123456789012345678901");
         builder.UseSetting("Database:AutoMigrate", "false");
     });
