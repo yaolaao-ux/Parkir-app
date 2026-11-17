@@ -7,7 +7,6 @@
 pos/
 firmware/
 tools/
-database/
 *.sln
 *.slnx
 README.md

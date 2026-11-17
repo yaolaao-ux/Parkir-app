@@ -5,6 +5,7 @@ COPY backend/Parkir.Api/Parkir.Api.csproj backend/Parkir.Api/
 RUN dotnet restore backend/Parkir.Api/Parkir.Api.csproj
 
 COPY backend/Parkir.Api/ backend/Parkir.Api/
+COPY database/migrations/ database/migrations/
 RUN dotnet publish backend/Parkir.Api/Parkir.Api.csproj \
     --configuration Release \
     --no-restore \

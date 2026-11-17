@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../backend/Parkir.Api/Parkir.Api.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.6" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.6" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../pos/Parkir.Pos/CheckoutQueue.cs" Link="CheckoutQueue.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryContentRootAttribute">
+      <_Parameter1>Parkir.Api</_Parameter1>
+      <_Parameter2>$(MSBuildThisFileDirectory)../../backend/Parkir.Api</_Parameter2>
+      <_Parameter3>Parkir.Api.csproj</_Parameter3>
+      <_Parameter4>0</_Parameter4>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

@@ -1,123 +1,540 @@
 <Window x:Class="Parkir.Pos.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Parkir | Pos Keluar" Height="760" Width="980"
-        MinHeight="680" MinWidth="820" Background="{StaticResource Canvas}"
-        Foreground="{StaticResource Ink}" FontFamily="Segoe UI"
-        WindowStartupLocation="CenterScreen">
-    <Grid Margin="30">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+        Title="Parkir | Pos Keluar" Height="800" Width="1340"
+        MinHeight="720" MinWidth="1180"
+        Background="#F3F5F1" Foreground="#172321"
+        FontFamily="Segoe UI"
+        WindowStartupLocation="CenterScreen"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <SolidColorBrush x:Key="Ink" Color="#172321" />
+        <SolidColorBrush x:Key="Muted" Color="#687773" />
+        <SolidColorBrush x:Key="Canvas" Color="#F3F5F1" />
+        <SolidColorBrush x:Key="Accent" Color="#137B67" />
+        <SolidColorBrush x:Key="Line" Color="#DDE4DE" />
+        <SolidColorBrush x:Key="Gold" Color="#D79B39" />
+        <SolidColorBrush x:Key="GreenSoft" Color="#E5F1EB" />
+        <SolidColorBrush x:Key="WarnSoft" Color="#FBF0D8" />
+        <SolidColorBrush x:Key="Red" Color="#A2443D" />
 
-        <DockPanel Grid.Row="0" Margin="0,0,0,24">
-            <StackPanel>
-                <TextBlock Text="PARKIR / OPERASIONAL" FontSize="12" FontWeight="Bold"
-                           Foreground="{StaticResource Accent}" />
-                <TextBlock Text="Pos keluar" FontSize="28" FontWeight="SemiBold" />
-            </StackPanel>
-            <TextBlock x:Name="ConnectionLabel" DockPanel.Dock="Right" VerticalAlignment="Center"
-                       Text="API lokal" Foreground="{StaticResource Muted}" />
-        </DockPanel>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="14" />
+        </Style>
 
-        <Grid Grid.Row="1" Margin="0,0,0,18">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBox x:Name="TicketInput" Grid.Column="0" VerticalContentAlignment="Center"
-                     ToolTip="Scan barcode atau masukkan nomor tiket"
-                     KeyDown="TicketInput_KeyDown" />
-            <Button Grid.Column="1" Margin="10,0,0,0" Content="Cari tiket" Click="Quote_Click"
-                    Background="{StaticResource Ink}" Foreground="White" BorderThickness="0" />
-        </Grid>
+        <Style x:Key="LabelText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#334640" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
 
-        <Grid Grid.Row="2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1.15*" />
-                <ColumnDefinition Width="18" />
-                <ColumnDefinition Width="0.85*" />
-            </Grid.ColumnDefinitions>
+        <Style x:Key="ValueText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource Ink}" />
+            <Setter Property="TextAlignment" Value="Right" />
+        </Style>
 
-            <Border Grid.Column="0" Background="White" BorderBrush="#DDE4DE" BorderThickness="1" Padding="22">
-                <StackPanel>
-                    <TextBlock Text="RINGKASAN PARKIR" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource Muted}" />
-                    <TextBlock x:Name="TicketLabel" Text="Belum ada tiket" FontSize="21"
-                               FontWeight="SemiBold" Margin="0,10,0,20" />
-                    <Grid Margin="0,0,0,10">
-                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="Durasi" Foreground="{StaticResource Muted}" />
-                        <TextBlock x:Name="DurationLabel" Grid.Column="1" Text="-" FontWeight="SemiBold" />
-                    </Grid>
-                    <Grid Margin="0,0,0,10">
-                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="Status" Foreground="{StaticResource Muted}" />
-                        <TextBlock x:Name="MemberLabel" Grid.Column="1" Text="-" FontWeight="SemiBold" />
-                    </Grid>
-                    <TextBlock Text="VERIFIKASI VISUAL" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource Muted}" Margin="0,10,0,8" />
-                    <Grid Height="142">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="FOTO MASUK" FontSize="10" FontWeight="Bold"
-                                       Foreground="{StaticResource Muted}" Margin="0,0,0,5" />
-                            <Border Height="118" Background="#EEF2EE" BorderBrush="#DDE4DE" BorderThickness="1">
-                                <Image x:Name="EntryPhotoImage" Stretch="Uniform" />
-                            </Border>
+        <Style x:Key="MutedText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Muted}" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{StaticResource Ink}" />
+        </Style>
+
+        <Style x:Key="InputBox" TargetType="TextBox">
+            <Setter Property="Height" Value="44" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#CBD7D0" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Height" Value="46" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="Background" Value="{StaticResource Accent}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#0F6554" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.5" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SecondaryButton" TargetType="Button">
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="{StaticResource Ink}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                    <Setter Property="Foreground" Value="{StaticResource Accent}" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.5" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ClassChoice" TargetType="RadioButton">
+            <Setter Property="Height" Value="70" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="GroupName" Value="VehicleClass" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd" Padding="6"
+                                Background="White"
+                                BorderBrush="{StaticResource Line}"
+                                BorderThickness="1"
+                                CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource GreenSoft}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#A9BDB3" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="MethodChoice" TargetType="RadioButton" BasedOn="{StaticResource ClassChoice}">
+            <Setter Property="Height" Value="66" />
+            <Setter Property="GroupName" Value="PaymentMethod" />
+        </Style>
+    </Window.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="22,18,22,14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="White" BorderBrush="{StaticResource Line}"
+                    BorderThickness="1" CornerRadius="10" Padding="16,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal">
+                        <Border Width="36" Height="36" Background="{StaticResource Gold}"
+                                CornerRadius="6" Margin="0,0,10,0">
+                            <TextBlock Text="P." FontSize="16" FontWeight="Bold" Foreground="#153C35"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Parkir POS" FontSize="18" FontWeight="Bold" Foreground="{StaticResource Ink}" />
+                            <TextBlock Text="Operasional gerbang keluar" Style="{StaticResource MutedText}" />
                         </StackPanel>
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="FOTO KELUAR" FontSize="10" FontWeight="Bold"
-                                       Foreground="{StaticResource Muted}" Margin="0,0,0,5" />
-                            <Border Height="118" Background="#EEF2EE" BorderBrush="#DDE4DE" BorderThickness="1">
-                                <Image x:Name="ExitPhotoImage" Stretch="Uniform" />
-                            </Border>
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="1" Text="POS KASIR PARKIR — GERBANG KELUAR 02"
+                               FontSize="19" FontWeight="Bold" Foreground="{StaticResource Ink}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                    <StackPanel Grid.Column="2" HorizontalAlignment="Right">
+                        <TextBlock x:Name="ClockLabel" Text="--:--:--" FontSize="16" FontWeight="Bold"
+                                   Foreground="{StaticResource Ink}" HorizontalAlignment="Right" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBlock x:Name="OperatorLabel" Text="Operator: -" Style="{StaticResource MutedText}" />
+                            <TextBlock x:Name="ConnectionLabel" Text="API LAN" Style="{StaticResource MutedText}"
+                                       Margin="8,0,0,0" />
                         </StackPanel>
-                    </Grid>
-                    <Button x:Name="CapturePhotoButton" Content="Ambil foto keluar" Margin="0,9,0,0"
-                            Click="CapturePhoto_Click" IsEnabled="False" HorizontalAlignment="Left"
-                            Background="Transparent" BorderBrush="#DDE4DE" />
-                    <Separator Margin="0,10" />
-                    <TextBlock Text="TOTAL TAGIHAN" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource Muted}" />
-                    <TextBlock x:Name="FeeLabel" Text="Rp 0" FontSize="34" FontWeight="Bold"
-                               Foreground="{StaticResource Accent}" Margin="0,3,0,0" />
-                    <TextBlock x:Name="MessageLabel" Text="Scan tiket untuk memulai."
-                               TextWrapping="Wrap" Margin="0,20,0,0" Foreground="{StaticResource Muted}" />
-                </StackPanel>
+                    </StackPanel>
+                </Grid>
             </Border>
 
-            <Border Grid.Column="2" Background="White" BorderBrush="#DDE4DE" BorderThickness="1" Padding="22">
-                <StackPanel>
-                    <TextBlock Text="PENYELESAIAN" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource Muted}" Margin="0,0,0,18" />
-                    <TextBlock Text="Metode pembayaran" Margin="0,0,0,7" />
-                    <ComboBox x:Name="PaymentMethod" Height="40" Padding="8" SelectedIndex="0">
-                        <ComboBoxItem Content="CASH" />
-                        <ComboBoxItem Content="QRIS" />
-                        <ComboBoxItem Content="DEBIT" />
-                    </ComboBox>
-                    <CheckBox x:Name="LostTicketCheck" Content="Karcis hilang" Margin="0,20,0,9"
-                              Checked="LostTicketCheck_Changed" Unchecked="LostTicketCheck_Changed" />
-                    <CheckBox x:Name="IdentityVerifiedCheck" Content="Identitas sudah diverifikasi"
-                              IsEnabled="False" />
-                    <Button x:Name="CheckoutButton" Content="Bayar dan tutup tiket" Margin="0,24,0,0"
-                            Click="Checkout_Click" Background="{StaticResource Accent}" Foreground="White"
-                            BorderThickness="0" IsEnabled="False" />
-                    <Button Content="Tiket baru" Margin="0,8,0,0" Click="NewTicket_Click"
-                            Background="Transparent" BorderBrush="#DDE4DE" />
-                </StackPanel>
-            </Border>
-        </Grid>
+            <Grid Grid.Row="1" Margin="0,14,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.55*" />
+                    <ColumnDefinition Width="18" />
+                    <ColumnDefinition Width="1*" />
+                </Grid.ColumnDefinitions>
 
-        <TextBlock Grid.Row="3" Margin="0,16,0,0" Text="Kasir LAN  ·  Pastikan kendaraan dan tiket sudah diverifikasi sebelum palang dibuka."
-                   Foreground="{StaticResource Muted}" FontSize="12" />
-    </Grid>
+                <StackPanel Grid.Column="0">
+                    <StackPanel Orientation="Horizontal" Margin="2,10,0,8">
+                        <Rectangle Width="3" Height="18" Fill="{StaticResource Gold}" Margin="0,0,8,0" />
+                        <TextBlock Text="INPUT TRANSAKSI" Style="{StaticResource SectionTitle}" />
+                    </StackPanel>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid>
+                                <TextBlock Text="Plat Nomor (Manual)" Style="{StaticResource LabelText}" />
+                                <Border x:Name="PlateBadgeBorder" HorizontalAlignment="Right"
+                                        Background="{StaticResource GreenSoft}"
+                                        CornerRadius="4" Padding="5,2" Margin="0,-2,0,0">
+                                    <TextBlock x:Name="PlateBadgeText" Text="WAJIB" FontSize="9" FontWeight="Bold"
+                                               Foreground="{StaticResource Accent}" />
+                                </Border>
+                            </Grid>
+                            <TextBox x:Name="PlateInput" Style="{StaticResource InputBox}" MaxLength="20"
+                                     TextChanged="PlateInput_TextChanged" KeyDown="PlateInput_KeyDown" />
+
+                            <TextBlock Text="Scan Tiket / Barcode (Automatic)" Style="{StaticResource LabelText}"
+                                       Margin="0,10,0,6" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="78" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TicketInput" Grid.Column="0" Style="{StaticResource InputBox}"
+                                         Margin="0,0,8,0" KeyDown="TicketInput_KeyDown" />
+                                <Button Grid.Column="1" Content="Cari" Style="{StaticResource SecondaryButton}"
+                                        VerticalAlignment="Center" Click="Quote_Click" />
+                            </Grid>
+
+                            <Grid Margin="0,12,0,6">
+                                <TextBlock Text="Kelas tarif" Style="{StaticResource LabelText}" />
+                                <Button Content="Muat ulang kelas" Style="{StaticResource SecondaryButton}"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                                        Height="24" Padding="8,2" FontSize="10"
+                                        Click="ReloadVehicleTypes_Click" />
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <RadioButton x:Name="ClassMotorButton" Grid.Column="0" Tag="Motor"
+                                             Style="{StaticResource ClassChoice}" IsEnabled="False"
+                                             Checked="VehicleClass_Checked">
+                                    <Grid>
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="🏍️" FontSize="25" HorizontalAlignment="Center" />
+                                            <TextBlock Text="Motor" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                        <TextBlock Text="F1" FontSize="9" Foreground="{StaticResource Muted}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,5,0" />
+                                    </Grid>
+                                </RadioButton>
+                                <RadioButton x:Name="ClassMobilButton" Grid.Column="2" Tag="Mobil"
+                                             Style="{StaticResource ClassChoice}" IsEnabled="False"
+                                             Checked="VehicleClass_Checked">
+                                    <Grid>
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="🚙" FontSize="25" HorizontalAlignment="Center" />
+                                            <TextBlock Text="Mobil" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                        <TextBlock Text="F2" FontSize="9" Foreground="{StaticResource Muted}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,5,0" />
+                                    </Grid>
+                                </RadioButton>
+                                <RadioButton x:Name="ClassTrukButton" Grid.Column="4" Tag="Truk"
+                                             Style="{StaticResource ClassChoice}" IsEnabled="False"
+                                             Checked="VehicleClass_Checked">
+                                    <Grid>
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="🚚" FontSize="25" HorizontalAlignment="Center" />
+                                            <TextBlock Text="Truk" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                        <TextBlock Text="F3" FontSize="9" Foreground="{StaticResource Muted}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,5,0" />
+                                    </Grid>
+                                </RadioButton>
+                            </Grid>
+
+                            <Border x:Name="OverridePanel" Visibility="Collapsed" Background="#FBF7ED"
+                                    BorderBrush="#E6D4B4" BorderThickness="1" CornerRadius="6"
+                                    Padding="10" Margin="0,10,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="PERUBAHAN KELAS TARIF" FontSize="10" FontWeight="Bold"
+                                               Foreground="{StaticResource Red}" />
+                                    <TextBlock Text="Kelas berbeda dari tiket masuk. Perubahan beserta alasannya dicatat di audit."
+                                               Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                                    <TextBlock Text="Alasan perubahan (wajib, minimal 5 karakter)"
+                                               Style="{StaticResource LabelText}" Margin="0,8,0,5" />
+                                    <TextBox x:Name="OverrideReasonInput" Style="{StaticResource InputBox}"
+                                             Height="38" MaxLength="200"
+                                             TextChanged="OverrideReasonInput_TextChanged" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal" Margin="2,14,0,8">
+                        <Rectangle Width="3" Height="18" Fill="{StaticResource Gold}" Margin="0,0,8,0" />
+                        <TextBlock Text="VERIFIKASI VISUAL" Style="{StaticResource SectionTitle}" />
+                    </StackPanel>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="10" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="FOTO KEDATANGAN" FontSize="12" FontWeight="Bold"
+                                               Foreground="{StaticResource Ink}" HorizontalAlignment="Center" Margin="0,0,0,6" />
+                                    <Border Height="150" Background="#F7FAF7" BorderBrush="{StaticResource Line}"
+                                            BorderThickness="1" CornerRadius="4">
+                                        <Image x:Name="EntryPhotoImage" Stretch="Uniform" />
+                                    </Border>
+                                    <TextBlock x:Name="EntryPhotoStatus" Text="Belum ada foto"
+                                               Style="{StaticResource MutedText}" HorizontalAlignment="Center" Margin="0,5,0,0" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="KAMERA KELUAR (LIVE)" FontSize="12" FontWeight="Bold"
+                                               Foreground="{StaticResource Ink}" HorizontalAlignment="Center" Margin="0,0,0,6" />
+                                    <Grid>
+                                        <Border Height="150" Background="#F7FAF7" BorderBrush="{StaticResource Line}"
+                                                BorderThickness="1" CornerRadius="4">
+                                            <Image x:Name="ExitPhotoImage" Stretch="Uniform" />
+                                        </Border>
+                                        <Border Background="#CF1F1F" CornerRadius="3" Padding="5,2"
+                                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">
+                                            <TextBlock Text="● LIVE" FontSize="9" FontWeight="Bold" Foreground="White" />
+                                        </Border>
+                                    </Grid>
+                                    <TextBlock x:Name="ExitPhotoStatus" Text="Belum ada foto"
+                                               Style="{StaticResource MutedText}" HorizontalAlignment="Center" Margin="0,5,0,0" />
+                                </StackPanel>
+                            </Grid>
+                            <Button x:Name="CapturePhotoButton" Content="Ambil / ganti foto keluar (F8)"
+                                    Style="{StaticResource SecondaryButton}" Margin="0,10,0,0"
+                                    HorizontalAlignment="Left" Click="CapturePhoto_Click" IsEnabled="False" />
+                        </StackPanel>
+                    </Border>
+
+                    <Button x:Name="ZoomPhotoButton" Content="PERBESAR FOTO (F4)"
+                            Style="{StaticResource SecondaryButton}" Margin="0,8,0,0"
+                            Click="ZoomPhoto_Click" />
+
+                    <StackPanel Orientation="Horizontal" Margin="2,14,0,8">
+                        <Rectangle Width="3" Height="18" Fill="{StaticResource Gold}" Margin="0,0,8,0" />
+                        <TextBlock Text="TRANSAKSI TERAKHIR" Style="{StaticResource SectionTitle}" />
+                    </StackPanel>
+
+                    <Border Style="{StaticResource Card}" Padding="8">
+                        <Grid>
+                            <ListBox x:Name="RecentTransactionsList" Height="92" BorderThickness="0"
+                                     Background="Transparent" Focusable="False" IsTabStop="False"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="55" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="100" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Time}" Style="{StaticResource MutedText}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="12"
+                                                       FontWeight="SemiBold" Foreground="{StaticResource Ink}" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Amount}" FontSize="12"
+                                                       FontWeight="SemiBold" Foreground="{StaticResource Ink}"
+                                                       TextAlignment="Right" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock x:Name="RecentEmptyLabel" Text="Belum ada transaksi selesai."
+                                       Style="{StaticResource MutedText}" VerticalAlignment="Center"
+                                       HorizontalAlignment="Left" Margin="8,0,0,0" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2">
+                    <StackPanel Orientation="Horizontal" Margin="2,10,0,8">
+                        <Rectangle Width="3" Height="18" Fill="{StaticResource Gold}" Margin="0,0,8,0" />
+                        <TextBlock Text="RINCIAN PEMBAYARAN" Style="{StaticResource SectionTitle}" />
+                    </StackPanel>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Border Background="#F7FAF7" BorderBrush="#E6EEE9" BorderThickness="1"
+                                    CornerRadius="8" Padding="14,10">
+                                <StackPanel>
+                                    <Grid Margin="0,2">
+                                        <TextBlock Text="Tiket" Style="{StaticResource MutedText}" />
+                                        <TextBlock x:Name="TicketLabel" Text="Belum ada tiket" Style="{StaticResource ValueText}" />
+                                    </Grid>
+                                    <Grid Margin="0,2">
+                                        <TextBlock Text="Plat Nomor" Style="{StaticResource MutedText}" />
+                                        <TextBlock x:Name="DetailPlateText" Text="-" Style="{StaticResource ValueText}" />
+                                    </Grid>
+                                    <Grid Margin="0,2">
+                                        <TextBlock Text="Kelas" Style="{StaticResource MutedText}" />
+                                        <TextBlock x:Name="DetailClassText" Text="-" Style="{StaticResource ValueText}" />
+                                    </Grid>
+                                    <Grid Margin="0,2">
+                                        <TextBlock Text="Waktu Masuk" Style="{StaticResource MutedText}" />
+                                        <TextBlock x:Name="DetailTimeInText" Text="-" Style="{StaticResource ValueText}" />
+                                    </Grid>
+                                    <Grid Margin="0,2">
+                                        <TextBlock Text="Waktu Keluar" Style="{StaticResource MutedText}" />
+                                        <TextBlock x:Name="DetailTimeOutText" Text="-" Style="{StaticResource ValueText}" />
+                                    </Grid>
+                                    <Grid Margin="0,2">
+                                        <TextBlock Text="Durasi" Style="{StaticResource MutedText}" />
+                                        <TextBlock x:Name="DurationLabel" Text="-" Style="{StaticResource ValueText}" />
+                                    </Grid>
+                                    <Grid Margin="0,2">
+                                        <TextBlock Text="Status" Style="{StaticResource MutedText}" />
+                                        <TextBlock x:Name="MemberLabel" Text="-" Style="{StaticResource ValueText}" />
+                                    </Grid>
+                                    <Grid x:Name="LostStatusRow" Margin="0,2" Visibility="Collapsed">
+                                        <TextBlock Text="Karcis" Style="{StaticResource MutedText}" />
+                                        <TextBlock Text="KARCIS HILANG" Style="{StaticResource ValueText}"
+                                                   Foreground="{StaticResource Red}" />
+                                    </Grid>
+                                    <Border BorderBrush="#CBD7D0" BorderThickness="0,1,0,0" Margin="0,8,0,0" Padding="0,8,0,0">
+                                        <StackPanel>
+                                            <TextBlock Text="TOTAL TARIF" FontSize="10" FontWeight="Bold"
+                                                       Foreground="{StaticResource Muted}" HorizontalAlignment="Center" />
+                                            <TextBlock x:Name="FeeLabel" Text="Rp 0" FontSize="28" FontWeight="Bold"
+                                                       Foreground="{StaticResource Accent}" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="METODE BAYAR" Style="{StaticResource LabelText}" Margin="0,12,0,6" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <RadioButton x:Name="CashMethodButton" Grid.Column="0" Tag="CASH"
+                                             Style="{StaticResource MethodChoice}" Checked="PaymentMethod_Checked">
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock Text="💵" FontSize="21" HorizontalAlignment="Center" />
+                                        <TextBlock Text="Tunai" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        <TextBlock Text="T" FontSize="8" Foreground="{StaticResource Muted}" HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="QrisMethodButton" Grid.Column="2" Tag="QRIS"
+                                             Style="{StaticResource MethodChoice}" Checked="PaymentMethod_Checked">
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock Text="▦" FontSize="21" HorizontalAlignment="Center" />
+                                        <TextBlock Text="QRIS" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        <TextBlock Text="Q" FontSize="8" Foreground="{StaticResource Muted}" HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="DebitMethodButton" Grid.Column="4" Tag="DEBIT"
+                                             Style="{StaticResource MethodChoice}" Checked="PaymentMethod_Checked">
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock Text="💳" FontSize="21" HorizontalAlignment="Center" />
+                                        <TextBlock Text="Debit" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        <TextBlock Text="D" FontSize="8" Foreground="{StaticResource Muted}" HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </RadioButton>
+                            </Grid>
+
+                            <Grid x:Name="CashPanel" Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="145" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Uang diterima" Style="{StaticResource LabelText}" />
+                                    <TextBox x:Name="CashReceivedInput" Style="{StaticResource InputBox}"
+                                             Text="20000" TextChanged="CashReceived_TextChanged"
+                                             KeyDown="CashReceived_KeyDown" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                    <TextBlock Text="Kembalian" Style="{StaticResource MutedText}" HorizontalAlignment="Right" />
+                                    <TextBlock x:Name="ChangeLabel" Text="Rp 12.000" FontSize="18" FontWeight="Bold"
+                                               Foreground="{StaticResource Accent}" HorizontalAlignment="Right" Margin="0,8,0,0" />
+                                </StackPanel>
+                            </Grid>
+
+                            <CheckBox x:Name="LostTicketCheck" Content="Karcis hilang (F6)" Margin="0,10,0,0"
+                                      IsEnabled="False"
+                                      Checked="LostTicketCheck_Changed" Unchecked="LostTicketCheck_Changed" />
+                            <Border x:Name="LostFieldsPanel" Visibility="Collapsed" Background="#FBF7ED"
+                                    BorderBrush="#E6D4B4" BorderThickness="1" CornerRadius="6"
+                                    Padding="10" Margin="0,8,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="Nomor identitas" Style="{StaticResource LabelText}" />
+                                    <TextBox x:Name="IdentityNumberInput" Style="{StaticResource InputBox}"
+                                             Height="38" TextChanged="IdentityNumberInput_TextChanged" />
+                                    <CheckBox x:Name="IdentityVerifiedCheck" Content="Identitas sudah diverifikasi"
+                                              Margin="0,8,0,0" IsEnabled="False"
+                                              Checked="IdentityVerifiedCheck_Changed" Unchecked="IdentityVerifiedCheck_Changed" />
+                                    <TextBlock Text="Foto keluar wajib. Total = denda tetap + tarif maksimum harian."
+                                               Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <Button x:Name="CheckoutButton" Content="CETAK STRUK &amp; BUKA GERBANG"
+                                    Style="{StaticResource PrimaryButton}" Height="54" Margin="0,12,0,0"
+                                    IsEnabled="False" Click="Checkout_Click" />
+                            <TextBlock x:Name="CheckoutHintLabel" Visibility="Collapsed"
+                                       Foreground="{StaticResource Red}" TextWrapping="Wrap"
+                                       Margin="0,6,0,0" FontSize="12" />
+                            <TextBlock x:Name="MessageLabel" Text="Scan tiket untuk memulai."
+                                       Foreground="{StaticResource Muted}" TextWrapping="Wrap"
+                                       Margin="0,9,0,0" FontSize="12" />
+                            <TextBlock Text="F1 Motor · F2 Mobil · F3 Truk · F6 Karcis Hilang · T/Q/D Metode · Ctrl+Enter Bayar"
+                                       Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,10,0,0" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button Content="Tiket baru" Style="{StaticResource SecondaryButton}"
+                                        Height="30" Click="NewTicket_Click" />
+                                <Button x:Name="QueueIssuesButton" Content="Antrean gagal"
+                                        Style="{StaticResource SecondaryButton}" Height="30" Margin="8,0,0,0"
+                                        Visibility="Collapsed" Click="QueueIssues_Click" />
+                                <Button Content="? Shortcut" Style="{StaticResource SecondaryButton}"
+                                        Height="30" Margin="8,0,0,0" Click="Help_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+
+            <Grid Grid.Row="2" Margin="2,10,2,0">
+                <TextBlock Text="● Sistem Online  |  Exit Gate 02  |  Barrier Ready"
+                           Style="{StaticResource MutedText}" HorizontalAlignment="Right" />
+            </Grid>
+        </Grid>
+    </ScrollViewer>
 </Window>

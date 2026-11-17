@@ -8,10 +8,12 @@ public sealed class ImageStorageService
 {
     private const int MaxImageBytes = 5 * 1024 * 1024;
     private readonly string _rootDirectory;
+    private readonly BusinessClock _clock;
 
-    public ImageStorageService(IWebHostEnvironment environment, string? configuredRoot)
+    public ImageStorageService(IWebHostEnvironment environment, string? configuredRoot, BusinessClock clock)
     {
         _rootDirectory = Path.GetFullPath(configuredRoot ?? Path.Combine(environment.ContentRootPath, "storage", "images"));
+        _clock = clock;
     }
 
     public async Task<StoredImage> StoreAsync(Stream source, long? contentLength, string? contentType, CancellationToken cancellationToken)
@@ -39,7 +41,7 @@ public sealed class ImageStorageService
             throw new ArgumentException("Content-Type tidak sesuai dengan format gambar.");
         }
 
-        var date = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var date = _clock.FileDate;
         var extension = detectedType switch
         {
             "image/jpeg" => ".jpg",

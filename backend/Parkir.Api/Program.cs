@@ -1,12 +1,14 @@
 using Npgsql;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Parkir.Api.Data;
 using Parkir.Api.Models;
+using Parkir.Api.Security;
 using Parkir.Api.Services;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
 
@@ -24,6 +26,8 @@ if (string.IsNullOrWhiteSpace(jwtSigningKey) || Encoding.UTF8.GetByteCount(jwtSi
     throw new InvalidOperationException("Security:JwtSigningKey wajib diisi minimal 32 byte.");
 }
 
+builder.Services.AddSingleton<BusinessClock>();
+builder.Services.AddHostedService<DatabaseInitializer>();
 builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
 builder.Services.AddScoped<ParkingRepository>();
 builder.Services.AddScoped<ParkingService>();
@@ -32,9 +36,10 @@ builder.Services.AddScoped<AuditRepository>();
 builder.Services.AddScoped<AdminRepository>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AdminService>();
-builder.Services.AddSingleton(new ImageStorageService(
+builder.Services.AddSingleton(sp => new ImageStorageService(
     builder.Environment,
-    builder.Configuration["Storage:ImageRoot"]));
+    builder.Configuration["Storage:ImageRoot"],
+    sp.GetRequiredService<BusinessClock>()));
 builder.Services.AddScoped<IPasswordHasher<UserAccount>, PasswordHasher<UserAccount>>();
 builder.Services.AddRateLimiter(options =>
 {
@@ -68,39 +73,71 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             RoleClaimType = System.Security.Claims.ClaimTypes.Role,
             ClockSkew = TimeSpan.FromSeconds(30)
         };
-    });
+    })
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+        ApiKeyAuthenticationHandler.SchemeName, _ => { });
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
 
 var app = builder.Build();
-app.UseDefaultFiles();
-app.UseStaticFiles();
 app.Use(async (context, next) =>
 {
-    var path = context.Request.Path;
-    var deviceEndpoint = path.Equals("/api/entries", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWithSegments("/api/members", StringComparison.OrdinalIgnoreCase) ||
-        path.Equals("/api/media/entries", StringComparison.OrdinalIgnoreCase) ||
-        path.Equals("/api/devices/heartbeat", StringComparison.OrdinalIgnoreCase);
-    if (deviceEndpoint)
+    var correlationId = context.Request.Headers["X-Correlation-ID"].FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(correlationId) || correlationId.Length > 100)
     {
-        var suppliedKey = context.Request.Headers["X-API-Key"].ToString();
-        var expectedBytes = Encoding.UTF8.GetBytes(apiKey);
-        var suppliedBytes = Encoding.UTF8.GetBytes(suppliedKey);
-        if (expectedBytes.Length != suppliedBytes.Length ||
-            !CryptographicOperations.FixedTimeEquals(expectedBytes, suppliedBytes))
-        {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new { error = "API key perangkat tidak valid." });
-            return;
-        }
+        correlationId = context.TraceIdentifier;
     }
 
+    context.TraceIdentifier = correlationId;
+    context.Response.Headers["X-Correlation-ID"] = correlationId;
+    using var scope = app.Logger.BeginScope(new Dictionary<string, object>
+    {
+        ["CorrelationId"] = correlationId
+    });
     await next();
 });
+app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
+{
+    var feature = context.Features.Get<IExceptionHandlerFeature>();
+    var exception = feature?.Error;
+    app.Logger.LogError(exception, "Permintaan gagal tanpa penanganan. TraceId={TraceId}", context.TraceIdentifier);
+
+    var (statusCode, message) = exception switch
+    {
+        PostgresException { SqlState: "23505" } => (StatusCodes.Status409Conflict, "Data sudah ada."),
+        PostgresException { SqlState: "23503" } => (StatusCodes.Status400BadRequest, "Data terkait tidak ditemukan."),
+        PostgresException { SqlState: "23514" } => (StatusCodes.Status400BadRequest, "Data melanggar aturan validasi."),
+        PostgresException { SqlState: "22001" } => (StatusCodes.Status400BadRequest, "Data melebihi panjang yang diizinkan."),
+        _ => (StatusCodes.Status500InternalServerError, "Terjadi kesalahan internal.")
+    };
+    context.Response.StatusCode = statusCode;
+    context.Response.ContentType = "application/json; charset=utf-8";
+    await context.Response.WriteAsJsonAsync(new { error = message, traceId = context.TraceIdentifier });
+}));
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.UseRouting();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapGet("/health", async (NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT 1", connection);
+        await command.ExecuteScalarAsync(cancellationToken);
+        return Results.Ok(new { status = "ok", time = DateTimeOffset.UtcNow });
+    }
+    catch (Exception exception)
+    {
+        app.Logger.LogError(exception, "Health check database gagal.");
+        return Results.Json(
+            new { status = "unhealthy" },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+});
 app.Run();
+
+public partial class Program;

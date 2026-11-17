@@ -5,6 +5,7 @@
 #include <SPI.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <esp_system.h>
 
 // Sesuaikan nilai ini dengan jaringan, perangkat, dan vehicle_type_id database.
 constexpr char WIFI_SSID[] = "PARKIR-LAN";
@@ -27,11 +28,14 @@ constexpr uint8_t GATE_RELAY_PIN = 26;
 constexpr uint8_t RFID_SS_PIN = 5;
 constexpr uint8_t RFID_RST_PIN = 4;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 40;
+constexpr uint32_t GATE_MIN_OPEN_MS = 800;
+constexpr uint32_t GATE_MAX_OPEN_MS = 15000;
 constexpr uint32_t HEARTBEAT_INTERVAL_MS = 20000;
 
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
 Preferences preferences;
 String gateId;
+String pendingEntryKey;
 
 bool gateIsOpen = false;
 bool vehicleCleared = false;
@@ -144,7 +148,10 @@ bool printTicket(const String &ticketId) {
   }
 
   const uint8_t initialize[] = {0x1B, 0x40};
-  printer.write(initialize, sizeof(initialize));
+  if (printer.write(initialize, sizeof(initialize)) != sizeof(initialize)) {
+    printer.stop();
+    return false;
+  }
   printer.println("PARKIR - TIKET MASUK");
   printer.println("Simpan tiket sampai keluar");
   printer.println(ticketId);
@@ -162,11 +169,17 @@ bool printTicket(const String &ticketId) {
   printer.write(static_cast<uint8_t>('V'));
   printer.write(static_cast<uint8_t>(66));
   printer.write(static_cast<uint8_t>(0));
+  printer.flush();
+  const bool connected = printer.connected();
   printer.stop();
+  if (!connected) {
+    Serial.println("Koneksi printer terputus saat mencetak.");
+    return false;
+  }
   return true;
 }
 
-bool createEntry(const String &rfidUid, String &ticketId) {
+bool createEntry(const String &rfidUid, const String &idempotencyKey, String &ticketId) {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("Server LAN tidak terhubung; palang tetap tertutup.");
     return false;
@@ -181,6 +194,7 @@ bool createEntry(const String &rfidUid, String &ticketId) {
   JsonDocument requestBody;
   requestBody["gateId"] = gateId;
   requestBody["vehicleTypeId"] = VEHICLE_TYPE_ID;
+  requestBody["idempotencyKey"] = idempotencyKey;
   if (photoPath.length() > 0) {
     requestBody["photoInPath"] = photoPath;
   } else {
@@ -268,9 +282,13 @@ void issueTicket(const String &rfidUid) {
   }
 
   String ticketId;
-  if (!createEntry(rfidUid, ticketId)) {
+  if (pendingEntryKey.length() == 0) {
+    pendingEntryKey = gateId + "-" + String(millis()) + "-" + String(esp_random(), HEX);
+  }
+  if (!createEntry(rfidUid, pendingEntryKey, ticketId)) {
     return;
   }
+  pendingEntryKey = "";
   Serial.printf("Tiket dibuat: %s\n", ticketId.c_str());
   if (printTicket(ticketId)) {
     openGate();
@@ -348,13 +366,21 @@ void loop() {
   }
 
   if (gateIsOpen) {
-    if (!vehiclePresent()) {
+    const uint32_t openFor = millis() - gateOpenedAt;
+    if (!vehiclePresent() && openFor >= GATE_MIN_OPEN_MS) {
       vehicleCleared = true;
     }
     if (vehicleCleared) {
       closeGate();
+    } else if (openFor >= GATE_MAX_OPEN_MS) {
+      Serial.println("Batas waktu palang terbuka tercapai; palang ditutup paksa.");
+      closeGate();
     }
     return;
+  }
+
+  if (!vehiclePresent() && pendingEntryKey.length() > 0) {
+    pendingEntryKey = "";
   }
 
   const String uid = readRfidUid();

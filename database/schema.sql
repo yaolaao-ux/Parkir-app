@@ -72,18 +72,28 @@ ON CONFLICT (gate_id) DO NOTHING;
 CREATE TABLE transactions (
     ticket_id VARCHAR(50) PRIMARY KEY,
     vehicle_type_id BIGINT NOT NULL REFERENCES vehicle_types(id),
+    grace_period_minutes INTEGER,
+    first_hour_rate NUMERIC(12, 2),
+    hourly_rate NUMERIC(12, 2),
+    lost_ticket_fee NUMERIC(12, 2),
+    max_daily_rate NUMERIC(12, 2),
     member_id BIGINT REFERENCES members(id),
     gate_in_id VARCHAR(20) NOT NULL,
+    entry_idempotency_key VARCHAR(100),
     gate_out_id VARCHAR(20),
     time_in TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     time_out TIMESTAMPTZ,
     duration_minutes INTEGER CHECK (duration_minutes IS NULL OR duration_minutes >= 0),
+    license_plate VARCHAR(20),
+    original_vehicle_type_id BIGINT REFERENCES vehicle_types(id),
+    override_reason VARCHAR(200),
+    original_total_fee NUMERIC(12, 2),
     photo_in_path VARCHAR(255),
     photo_out_path VARCHAR(255),
     total_fee NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (total_fee >= 0),
     penalty_fee NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (penalty_fee >= 0),
     payment_status VARCHAR(20) NOT NULL DEFAULT 'UNPAID'
-        CHECK (payment_status IN ('UNPAID', 'PAID', 'MEMBER', 'LOST_TICKET')),
+        CHECK (payment_status IN ('UNPAID', 'PAID', 'MEMBER', 'LOST_TICKET', 'VOID')),
     payment_method VARCHAR(30),
     cashier_user_id BIGINT REFERENCES users(id),
     checkout_id UUID,
@@ -97,6 +107,9 @@ CREATE TABLE transactions (
 
 CREATE INDEX ix_transactions_active_ticket
     ON transactions (ticket_id) WHERE time_out IS NULL;
+CREATE UNIQUE INDEX ux_transactions_entry_idempotency
+    ON transactions (gate_in_id, entry_idempotency_key)
+    WHERE entry_idempotency_key IS NOT NULL;
 CREATE INDEX ix_transactions_time_in ON transactions (time_in);
 CREATE INDEX ix_transactions_time_out ON transactions (time_out) WHERE time_out IS NOT NULL;
 CREATE INDEX ix_members_active_rfid ON members (rfid_uid) WHERE status = 'ACTIVE';

@@ -128,6 +128,7 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
     public async Task<IReadOnlyList<DailyReportRow>> GetReportAsync(
         DateOnly from,
         DateOnly to,
+        string timeZoneId,
         CancellationToken cancellationToken)
     {
         const string sql = """
@@ -136,22 +137,26 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
             )
             SELECT d.report_date,
                    count(t.ticket_id) FILTER (
-                       WHERE t.time_in >= d.report_date::timestamptz
-                         AND t.time_in < (d.report_date + 1)::timestamptz
+                       WHERE t.time_in >= (d.report_date::timestamp AT TIME ZONE @time_zone)
+                         AND t.time_in < ((d.report_date + 1)::timestamp AT TIME ZONE @time_zone)
+                         AND t.payment_status <> 'VOID'
                    ),
                    count(t.ticket_id) FILTER (
-                       WHERE t.time_out >= d.report_date::timestamptz
-                         AND t.time_out < (d.report_date + 1)::timestamptz
+                       WHERE t.time_out >= (d.report_date::timestamp AT TIME ZONE @time_zone)
+                         AND t.time_out < ((d.report_date + 1)::timestamp AT TIME ZONE @time_zone)
+                         AND t.payment_status <> 'VOID'
                    ),
                    coalesce(sum(t.total_fee) FILTER (
-                       WHERE t.time_out >= d.report_date::timestamptz
-                         AND t.time_out < (d.report_date + 1)::timestamptz
+                       WHERE t.time_out >= (d.report_date::timestamp AT TIME ZONE @time_zone)
+                         AND t.time_out < ((d.report_date + 1)::timestamp AT TIME ZONE @time_zone)
                          AND t.payment_status IN ('PAID', 'LOST_TICKET')
                    ), 0)
             FROM report_days d
             LEFT JOIN transactions t ON (
-                (t.time_in >= d.report_date::timestamptz AND t.time_in < (d.report_date + 1)::timestamptz)
-                OR (t.time_out >= d.report_date::timestamptz AND t.time_out < (d.report_date + 1)::timestamptz)
+                (t.time_in >= (d.report_date::timestamp AT TIME ZONE @time_zone)
+                    AND t.time_in < ((d.report_date + 1)::timestamp AT TIME ZONE @time_zone))
+                OR (t.time_out >= (d.report_date::timestamp AT TIME ZONE @time_zone)
+                    AND t.time_out < ((d.report_date + 1)::timestamp AT TIME ZONE @time_zone))
             )
             GROUP BY d.report_date
             ORDER BY d.report_date
@@ -160,6 +165,7 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("from", from);
         command.Parameters.AddWithValue("to", to);
+        command.Parameters.AddWithValue("time_zone", timeZoneId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var days = new List<DailyReportRow>();
         while (await reader.ReadAsync(cancellationToken))
@@ -174,21 +180,28 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
         return days;
     }
 
-    public async Task<DashboardSummary> GetDashboardAsync(CancellationToken cancellationToken)
+    public async Task<DashboardSummary> GetDashboardAsync(
+        DateTimeOffset dayStartUtc,
+        DateTimeOffset dayEndUtc,
+        CancellationToken cancellationToken)
     {
         const string sql = """
             SELECT
                 count(*) FILTER (WHERE time_out IS NULL),
-                count(*) FILTER (WHERE time_in >= CURRENT_DATE AND time_in < CURRENT_DATE + INTERVAL '1 day'),
-                count(*) FILTER (WHERE time_out >= CURRENT_DATE AND time_out < CURRENT_DATE + INTERVAL '1 day'),
+                count(*) FILTER (WHERE time_in >= @day_start AND time_in < @day_end
+                    AND payment_status <> 'VOID'),
+                count(*) FILTER (WHERE time_out >= @day_start AND time_out < @day_end
+                    AND payment_status <> 'VOID'),
                 coalesce(sum(total_fee) FILTER (
-                    WHERE time_out >= CURRENT_DATE AND time_out < CURRENT_DATE + INTERVAL '1 day'
+                    WHERE time_out >= @day_start AND time_out < @day_end
                       AND payment_status IN ('PAID', 'LOST_TICKET')
                 ), 0)
             FROM transactions
             """;
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("day_start", dayStartUtc);
+        command.Parameters.AddWithValue("day_end", dayEndUtc);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         await reader.ReadAsync(cancellationToken);
         return new DashboardSummary(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetDecimal(3));

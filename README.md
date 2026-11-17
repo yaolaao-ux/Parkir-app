@@ -35,14 +35,7 @@ DOTNET_ROLL_FORWARD=Major ConnectionStrings__Parking='Host=127.0.0.1;Database=pa
 
 Utilitas membuat username `cashier-demo` dan password acak yang ditampilkan sekali setelah berhasil disimpan.
 
-Kredensial akun demo development yang sudah dibuat pada database lokal:
-
-- Username: `admin-demo`
-- Password: `nlXFkov2FZGEaxnPhQ8pv9Kuq4rQhBzn`
-- Username: `cashier-demo`
-- Password: `xrikhhmNGOhme-g2wrh0ImVSX_OrpQuh`
-
-Password akun demo disimpan di README atas permintaan untuk kemudahan pengujian. Jangan gunakan kredensial ini di produksi atau pada database/jaringan bersama; bila repository dibagikan, hapus password dari README dan buat akun produksi dengan password baru. Jika database lokal dibuat ulang, jalankan utilitas di atas lagi untuk menghasilkan akun baru.
+Jangan menyimpan password akun demo di README atau repository. Jika database pernah memakai akun demo, rotasi password melalui utilitas provisioning dan batasi akses database hanya ke administrator. Untuk produksi, buat akun `ADMIN` dan `CASHIER` dengan password unik dari secret manager.
 
 ## 2. REST API
 
@@ -54,10 +47,11 @@ export ConnectionStrings__Parking='Host=127.0.0.1;Port=5432;Database=parkir;User
 export Security__ApiKey='GANTI_DENGAN_KUNCI_ACAK_PANJANG'
 export Security__JwtSigningKey='GANTI_DENGAN_SECRET_ACAK_MINIMAL_32_BYTE'
 export Storage__ImageRoot='/var/lib/parkir/images'
+export Business__TimeZone='Asia/Jakarta'
 dotnet run --project backend/Parkir.Api --urls http://0.0.0.0:5080
 ```
 
-API key hanya diwajibkan untuk endpoint perangkat `/api/entries`, `/api/members/*`, dan heartbeat; login memakai rate limit dan endpoint admin/kasir memakai JWT. Secret JWT wajib berbeda dan minimal 32 byte. Simpan secret di secret store dan batasi akses port API melalui firewall/VLAN. Jika database sudah memakai schema lama, jalankan migrasi `002_add_checkout_idempotency.sql`, `003_add_audit_logs.sql`, `004_add_device_heartbeats.sql`, lalu `005_add_gate_registry.sql` satu kali.
+API key hanya diwajibkan untuk endpoint perangkat `/api/entries`, `/api/members/*`, `/api/media/entries`, dan `/api/devices/heartbeat`; login memakai rate limit dan endpoint admin/kasir memakai JWT. Secret JWT wajib berbeda dan minimal 32 byte. Simpan secret di secret store dan batasi akses port API melalui firewall/VLAN. Migration di `database/migrations` dijalankan otomatis saat API start setelah tabel dasar tersedia; tabel `schema_migrations` mencatat versi yang sudah diterapkan. Endpoint `GET /health` memeriksa koneksi database dan mengembalikan `503` bila database tidak siap. Setiap response menyertakan `X-Correlation-ID` untuk penelusuran log.
 
 Gambar disimpan di bawah `Storage__ImageRoot/YYYY-MM-DD/` dengan nama GUID dan tidak disajikan sebagai static file. Upload menerima JPEG, PNG, atau WebP sampai 5 MB; endpoint masuk memerlukan API key, sedangkan upload/ambil foto keluar memerlukan JWT kasir. Pastikan direktori storage masuk strategi backup dan kontrol akses filesystem.
 
@@ -66,9 +60,11 @@ Endpoint utama:
 | Method | Endpoint | Fungsi |
 | --- | --- | --- |
 | `POST` | `/api/auth/login` | Login akun dan menerbitkan JWT 8 jam |
-| `POST` | `/api/entries` | Membuat tiket masuk, dengan `rfidUid` opsional |
-| `GET` | `/api/transactions/{ticketId}/quote` | Menghitung durasi dan tagihan (role `CASHIER`) |
-| `POST` | `/api/transactions/{ticketId}/checkout` | Menutup tiket dan mencatat pembayaran (role `CASHIER`) |
+| `POST` | `/api/entries` | Membuat tiket masuk, dengan `rfidUid` dan `idempotencyKey` opsional |
+| `GET` | `/api/vehicle-types` | Daftar kelas tarif untuk POS (role `CASHIER`) |
+| `GET` | `/api/transactions/{ticketId}/quote?vehicleTypeId=...` | Menghitung durasi dan tagihan; `vehicleTypeId` opsional untuk simulasi kelas lain (role `CASHIER`) |
+| `POST` | `/api/transactions/{ticketId}/checkout` | Menutup tiket dan mencatat pembayaran; mendukung `vehicleTypeId`, `licensePlate`, dan `overrideReason` (role `CASHIER`) |
+| `POST` | `/api/transactions/{ticketId}/void` | Membatalkan tiket `UNPAID` dengan alasan dan audit (role `ADMIN`/`CASHIER`) |
 | `GET` | `/api/members/{rfidUid}/verify` | Memverifikasi member aktif |
 | `GET` | `/api/admin/dashboard` | Statistik kendaraan dan pendapatan hari ini (role `ADMIN`) |
 | `GET`, `POST`, `PUT` | `/api/admin/vehicle-types` | Membaca dan mengatur tarif (role `ADMIN`) |
@@ -83,7 +79,7 @@ Endpoint utama:
 | `GET` | `/api/admin/gates` | Daftar gate dan status konfigurasi (role `ADMIN`) |
 | `POST`, `PUT` | `/api/admin/gates` | Daftarkan gate baru atau aktifkan/nonaktifkan gate (role `ADMIN`) |
 
-Dashboard admin tersedia di root server, misalnya `http://localhost:5080/`. Login menggunakan body `{"username":"...","password":"..."}` tanpa API key perangkat. POS hanya menerima akun `CASHIER`; dashboard hanya menerima akun `ADMIN`. ID kasir diambil dari JWT dan tidak diterima dari body checkout.
+Dashboard admin tersedia di root server, misalnya `http://localhost:5080/`. Login menggunakan body `{"username":"...","password":"..."}` tanpa API key perangkat. POS hanya menerima akun `CASHIER`; dashboard hanya menerima akun `ADMIN`. ID kasir diambil dari JWT dan tidak diterima dari body checkout. Zona waktu bisnis dikonfigurasi lewat `Business__TimeZone` (default `Asia/Jakarta`); laporan, pergantian hari, ID tiket, dan folder foto memakai zona waktu tersebut.
 
 Untuk menambah jalur, buka tab **Gate** sebagai admin, daftarkan `Gate ID` unik (maksimal 20 karakter), pilih arah masuk/keluar, lalu aktifkan gate. Schema baru menyiapkan `GATE-IN-01` dan `GATE-OUT-01` sebagai default. ID gate harus sama dengan ID heartbeat perangkat agar indikator ONLINE terhubung ke baris gate.
 
@@ -94,12 +90,34 @@ Contoh tiket masuk:
 ```sh
 curl -X POST http://localhost:5080/api/entries \
   -H 'Content-Type: application/json' \
-  -d '{"gateId":"GATE-IN-01","vehicleTypeId":1,"photoInPath":null,"rfidUid":null}'
+  -H 'X-API-Key: GANTI_API_KEY' \
+  -d '{"gateId":"GATE-IN-01","vehicleTypeId":1,"photoInPath":null,"rfidUid":null,"idempotencyKey":"GATE-IN-01-12345"}'
 ```
 
-Checkout reguler mengirim `gateId`, `paymentMethod`, `lostTicket:false`, `identityVerified:false`, `photoOutPath:null`, dan `idempotencyKey` berupa UUID. Karcis hilang harus mengirim `lostTicket:true` serta `identityVerified:true`. Kunci idempotency yang sama akan mengembalikan hasil checkout pertama, sehingga retry setelah timeout tidak menggandakan transaksi.
+`idempotencyKey` unik per gate mencegah tiket ganda saat firmware mengulang request setelah timeout. Request dengan kunci yang sama mengembalikan tiket pertama dengan `isNew=false`.
 
-## 3. POS kasir WPF
+Checkout reguler mengirim `gateId`, `paymentMethod`, `lostTicket:false`, `identityVerified:false`, `photoOutPath:null`, `idempotencyKey` berupa UUID, `vehicleTypeId`, `licensePlate`, `overrideReason`, dan `expectedTotalFee`. Plat nomor wajib diisi; untuk masa transisi client lama, validasi server dapat dimatikan sementara dengan `Checkout__RequireLicensePlate=false`. Jika `vehicleTypeId` berbeda dari kelas tiket, `overrideReason` wajib diisi 5-200 karakter; server menyimpan kelas asal, tarif asal, alasan, dan selisih tarif di audit. `expectedTotalFee` adalah total yang dilihat kasir; jika tarif berubah sebelum checkout, server menolak dengan `400` agar kasir memuat ulang tiket dan tidak terjadi kurang bayar. Karcis hilang harus mengirim `lostTicket:true` serta `identityVerified:true`. Kunci idempotency yang sama akan mengembalikan hasil checkout pertama, sehingga retry setelah timeout tidak menggandakan transaksi.
+
+Void tiket yang belum dibayar:
+
+```sh
+curl -X POST http://localhost:5080/api/transactions/TKT-20261118-xxxxxxxx/void \
+  -H 'Authorization: Bearer JWT_CASHIER' \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"Tiket tidak terpakai; kendaraan batal masuk"}'
+```
+
+## 3. Regression test
+
+Test tarif, timezone, kontrak JSON, migrasi antrean SQLite, dan auth endpoint perangkat:
+
+```sh
+dotnet run --project tests/Parkir.Tests/Parkir.Tests.csproj
+```
+
+Test berjalan sebagai runner konsol agar tidak bergantung pada VSTest. CI juga menjalankan build API dan test ini pada setiap push/PR.
+
+## 4. POS kasir WPF
 
 Build dan jalankan pada Windows dengan .NET 8 SDK:
 
@@ -108,11 +126,11 @@ dotnet build pos/Parkir.Pos/Parkir.Pos.csproj
 dotnet run --project pos/Parkir.Pos/Parkir.Pos.csproj
 ```
 
-Atur `PARKIR_API_KEY`, `PARKIR_GATE_ID` unik untuk jalur keluar, dan bila perlu `PARKIR_API_URL` sebelum menjalankan POS. POS menggunakan `PARKIR_GATE_ID` sebagai ID device heartbeat; jika `PARKIR_DEVICE_ID` diatur, nilainya harus sama dengan Gate ID agar status monitoring cocok. POS mengirim heartbeat tiap 20 detik. Jendela login hanya mengizinkan role `CASHIER`; token berlaku delapan jam. Pemindai barcode yang bekerja sebagai keyboard HID dapat langsung mengisi nomor tiket dan menekan Enter. POS menampilkan foto masuk dan mengunggah foto keluar sebelum checkout. Jika `PARKIR_OUT_CAMERA_URL` tidak diatur, petugas dapat memilih file JPEG/PNG/WebP; URL kamera harus mengembalikan satu snapshot dengan Content-Type dan Content-Length. Checkout disimpan lebih dahulu di SQLite pada `%LOCALAPPDATA%/Parkir/Pos` dan dikirim ulang tiap 10 detik dengan idempotency key yang sama. Jika server belum mengonfirmasi, jangan buka palang; jangan anggap pembayaran/tiket selesai sampai POS menampilkan konfirmasi server.
+Atur `PARKIR_API_KEY`, `PARKIR_GATE_ID` unik untuk jalur keluar, dan bila perlu `PARKIR_API_URL` sebelum menjalankan POS. POS menggunakan `PARKIR_GATE_ID` sebagai ID device heartbeat; jika `PARKIR_DEVICE_ID` diatur, nilainya harus sama dengan Gate ID agar status monitoring cocok. POS mengirim heartbeat tiap 20 detik dan berhenti mengirim heartbeat saat sesi JWT berakhir. Jendela login hanya mengizinkan role `CASHIER`; token berlaku delapan jam dan POS meminta login ulang lima menit sebelum kedaluwarsa atau saat server mengembalikan `401`. Alur POS dimulai dari plat nomor, lalu scan tiket; plat dan kelas tarif yang dipilih dikirim saat checkout, dan kelas tarif dapat dipilih dengan `F1` (Motor), `F2` (Mobil), atau `F3` (Truk). Jika kelas diubah dari tiket masuk, kasir wajib mengisi alasan perubahan. Pemindai barcode yang bekerja sebagai keyboard HID dapat langsung mengisi nomor tiket dan menekan Enter. POS menampilkan foto masuk dan mengunggah foto keluar sebelum checkout. Jika `PARKIR_OUT_CAMERA_URL` tidak diatur, petugas dapat memilih file JPEG/PNG/WebP; URL kamera harus mengembalikan satu snapshot dengan Content-Type dan Content-Length. Checkout disimpan lebih dahulu di SQLite pada `%LOCALAPPDATA%/Parkir/Pos` dengan status `PENDING`/`SENT`/`CONFIRMED`/`FAILED`/`HARDWARE_DONE` dan dikirim ulang tiap 10 detik dengan idempotency key yang sama. Error `4xx` permanen masuk antrean gagal dengan tombol tindakan; error jaringan/`5xx` di-retry dengan backoff. Jika server belum mengonfirmasi, jangan buka palang; jangan anggap pembayaran/tiket selesai sampai POS menampilkan konfirmasi server.
 
 Setelah server mengonfirmasi checkout, POS mencoba mencetak ESC/POS lewat TCP: set `PARKIR_RECEIPT_HOST` dan opsional `PARKIR_RECEIPT_PORT` (default 9100). Relay serial nonaktif kecuali `PARKIR_RELAY_PORT` dan `PARKIR_RELAY_OPEN_HEX` diatur; `PARKIR_RELAY_BAUD` default 9600. Isi byte hex sesuai protokol relay yang benar dan atur hardware ke pulse/self-release yang aman. Jika printer/relay tidak tersedia, pembayaran tetap tercatat dan POS memberi status untuk penanganan manual; verifikasi relay pada bench sebelum menghubungkannya ke palang.
 
-## 4. Gerbang masuk ESP32
+## 5. Gerbang masuk ESP32
 
 Project PlatformIO ada di `firmware/gate_in`:
 
@@ -123,7 +141,7 @@ pio run --target upload
 pio device monitor
 ```
 
-Sesuaikan SSID, password, URL API, `API_MEDIA_URL`, `API_HEARTBEAT_URL`, `API_KEY`, `CAMERA_SNAPSHOT_URL`, alamat printer, dan `VEHICLE_TYPE_ID` pada `gate_in.ino`. Setiap ESP32 memiliki Gate ID sendiri: kirim `SET_GATE_ID=GATE-IN-02` di Serial Monitor saat commissioning; firmware menyimpan ID ke NVS. Daftarkan ID yang sama di tab Gate admin. Gate mengirim heartbeat tiap 20 detik. Kamera harus menyediakan endpoint snapshot HTTP yang mengembalikan JPEG/PNG/WebP dengan Content-Length. Pin default: tombol GPIO 27, sensor loop GPIO 25, relay GPIO 26, RFID SS GPIO 5 dan RST GPIO 4. Input tombol/sensor diasumsikan aktif LOW, sedangkan relay diasumsikan aktif HIGH. Verifikasi level listrik dan pin aktual sebelum menghubungkan perangkat.
+Sesuaikan SSID, password, URL API, `API_MEDIA_URL`, `API_HEARTBEAT_URL`, `API_KEY`, `CAMERA_SNAPSHOT_URL`, alamat printer, dan `VEHICLE_TYPE_ID` pada `gate_in.ino`. Setiap ESP32 memiliki Gate ID sendiri: kirim `SET_GATE_ID=GATE-IN-02` di Serial Monitor saat commissioning; firmware menyimpan ID ke NVS. Daftarkan ID yang sama di tab Gate admin. Gate mengirim heartbeat tiap 20 detik. Firmware mengirim `idempotencyKey` per percobaan tiket sehingga retry setelah timeout tidak membuat tiket ganda; kunci dipertahankan sampai tiket berhasil dicetak. Palang menunggu minimal 800 ms sebelum boleh menutup dan ditutup paksa setelah 15 detik bila sensor loop tidak melepas. Kamera harus menyediakan endpoint snapshot HTTP yang mengembalikan JPEG/PNG/WebP dengan Content-Length. Pin default: tombol GPIO 27, sensor loop GPIO 25, relay GPIO 26, RFID SS GPIO 5 dan RST GPIO 4. Input tombol/sensor diasumsikan aktif LOW, sedangkan relay diasumsikan aktif HIGH. Verifikasi level listrik dan pin aktual sebelum menghubungkan perangkat.
 
 ### Schematic Wiring Gate-In
 
@@ -158,6 +176,14 @@ ESP32 dicatu melalui USB regulated 5 V. Printer, kamera, dan server tersambung k
 **Keselamatan:** gunakan photocell, safety edge, emergency stop, limit switch, dan proteksi anti-crush independen dari ESP32. Saat boot/reset, kontak relay harus terbuka. Uji level tegangan, polaritas detector, mode pulse/self-release gate controller, dan interlock di bench sebelum menghubungkan aktuator. Pinout gate controller serta tegangan detector bergantung pada perangkat yang dipakai; verifikasi datasheet hardware aktual.
 
 Printer tiket masuk menggunakan ESC/POS melalui TCP port 9100. Pembukaan palang hanya terjadi setelah server membuat tiket dan printer menerima koneksi. Palang menutup setelah sensor menyatakan area kosong; gunakan juga kontrol keselamatan/fotokel independen dan interlock hardware yang sesuai. Kegagalan Wi-Fi/API berarti tiket tidak diterbitkan dan palang tidak dibuka.
+
+## Deploy dan rollback
+
+1. Backup database sebelum deploy.
+2. Deploy API. Migration `002`-`009` diterapkan otomatis oleh runner dan dicatat di `schema_migrations`; cek `GET /health` sampai `200`.
+3. Deploy POS baru. Verifikasi login ulang, antrean checkout, cetak struk, dan relay di bench.
+4. Rollback aplikasi dilakukan dengan mengembalikan binary API/POS sebelumnya. Kolom baru bersifat nullable dan field request baru opsional, sehingga rollback binary tidak memerlukan drop column. Migration bersifat forward-only; jangan menghapus `schema_migrations`.
+5. Saat masa transisi dari POS lama yang belum mengirim plat, set `Checkout__RequireLicensePlate=false` pada API baru, deploy POS baru, lalu kembalikan ke `true`.
 
 ## Batas contoh
 

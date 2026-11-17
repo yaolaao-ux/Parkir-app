@@ -3,7 +3,7 @@ using Parkir.Api.Models;
 
 namespace Parkir.Api.Services;
 
-public sealed class AdminService(AdminRepository repository, AuditRepository auditRepository)
+public sealed class AdminService(AdminRepository repository, AuditRepository auditRepository, BusinessClock clock)
 {
     public Task<IReadOnlyList<GateDto>> GetGatesAsync(CancellationToken cancellationToken) =>
         repository.GetGatesAsync(cancellationToken);
@@ -69,17 +69,17 @@ public sealed class AdminService(AdminRepository repository, AuditRepository aud
         repository.GetDeviceStatusesAsync(cancellationToken);
 
     public Task<DashboardSummary> GetDashboardAsync(CancellationToken cancellationToken) =>
-        repository.GetDashboardAsync(cancellationToken);
+        repository.GetDashboardAsync(clock.DayStartUtc(clock.Today), clock.DayEndUtc(clock.Today), cancellationToken);
 
     public async Task<ParkingReport> GetReportAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken)
     {
         if (from == default || to == default || from > to || to.DayNumber - from.DayNumber > 365 ||
-            to > DateOnly.FromDateTime(DateTime.UtcNow))
+            to > clock.Today)
         {
             throw new ArgumentException("Rentang laporan tidak valid; pilih maksimal 366 hari hingga hari ini.");
         }
 
-        var days = await repository.GetReportAsync(from, to, cancellationToken);
+        var days = await repository.GetReportAsync(from, to, clock.TimeZoneId, cancellationToken);
         return new ParkingReport(
             from,
             to,
@@ -123,7 +123,7 @@ public sealed class AdminService(AdminRepository repository, AuditRepository aud
         MemberInput input, long actorId, string? sourceIp, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(input.RfidUid) || string.IsNullOrWhiteSpace(input.FullName) ||
-            string.IsNullOrWhiteSpace(input.LicensePlate) || input.ExpiredDate < DateOnly.FromDateTime(DateTime.UtcNow))
+            string.IsNullOrWhiteSpace(input.LicensePlate) || input.ExpiredDate < clock.Today)
         {
             throw new ArgumentException("UID RFID, nama, plat nomor, dan tanggal aktif yang valid wajib diisi.");
         }

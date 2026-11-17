@@ -4,12 +4,14 @@ public sealed record EntryRequest(
     string GateId,
     long VehicleTypeId,
     string? PhotoInPath,
-    string? RfidUid);
+    string? RfidUid,
+    string? IdempotencyKey = null);
 
 public sealed record EntryResponse(
     string TicketId,
     DateTimeOffset TimeIn,
-    string? MemberName);
+    string? MemberName,
+    bool IsNew = true);
 
 public sealed record QuoteResponse(
     string TicketId,
@@ -19,7 +21,9 @@ public sealed record QuoteResponse(
     decimal LostTicketTotal,
     string? PhotoInPath,
     bool IsMember,
-    string PaymentStatus);
+    string PaymentStatus,
+    long VehicleTypeId,
+    string VehicleTypeName);
 
 public sealed record CheckoutRequest(
     string GateId,
@@ -27,7 +31,19 @@ public sealed record CheckoutRequest(
     bool LostTicket,
     bool IdentityVerified,
     string? PhotoOutPath,
-    Guid IdempotencyKey);
+    Guid IdempotencyKey,
+    long? VehicleTypeId = null,
+    string? LicensePlate = null,
+    string? OverrideReason = null,
+    decimal? ExpectedTotalFee = null);
+
+public sealed record VehicleClassOverride(
+    long OriginalVehicleTypeId,
+    string OriginalVehicleTypeName,
+    string Reason,
+    decimal OriginalTotalFee);
+
+public sealed record VoidTicketRequest(string Reason);
 
 public sealed record CheckoutResponse(
     string TicketId,
@@ -155,4 +171,6 @@ public sealed record TicketData(
     decimal FirstHourRate,
     decimal HourlyRate,
     decimal LostTicketFee,
-    decimal MaxDailyRate);
+    decimal MaxDailyRate,
+    long VehicleTypeId,
+    string VehicleTypeName);

@@ -8,4 +8,8 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.6" />
     <PackageReference Include="Npgsql" Version="8.0.6" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../database/migrations/*.sql"
+                      LogicalName="Migrations.%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

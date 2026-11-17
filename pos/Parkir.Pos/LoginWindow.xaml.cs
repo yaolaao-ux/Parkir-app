@@ -13,7 +13,7 @@ public partial class LoginWindow : Window
 
     public PosSession? Session { get; private set; }
 
-    public LoginWindow()
+    public LoginWindow(string? username = null)
     {
         InitializeComponent();
         var address = Environment.GetEnvironmentVariable("PARKIR_API_URL") ?? "http://127.0.0.1:5080/";
@@ -24,7 +24,15 @@ public partial class LoginWindow : Window
             _client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
         }
 
-        UsernameInput.Focus();
+        UsernameInput.Text = username ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(username))
+        {
+            PasswordInput.Focus();
+        }
+        else
+        {
+            UsernameInput.Focus();
+        }
     }
 
     private async void Input_KeyDown(object sender, KeyEventArgs e)
@@ -74,7 +82,13 @@ public partial class LoginWindow : Window
                 return;
             }
 
-            Session = new PosSession(result.AccessToken, result.UserId, result.FullName, result.Role, result.ExpiresAt);
+            Session = new PosSession(
+                result.AccessToken,
+                UsernameInput.Text.Trim(),
+                result.UserId,
+                result.FullName,
+                result.Role,
+                result.ExpiresAt);
             DialogResult = true;
         }
         catch (HttpRequestException)
