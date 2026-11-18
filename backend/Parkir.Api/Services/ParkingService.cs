@@ -5,6 +5,7 @@ namespace Parkir.Api.Services;
 
 public sealed class ParkingService(
     ParkingRepository repository,
+    GateRepository gateRepository,
     AdminService adminService,
     BusinessClock clock,
     IConfiguration configuration,
@@ -199,6 +200,88 @@ public sealed class ParkingService(
 
     public Task<MemberVerificationResponse> VerifyMemberAsync(string rfidUid, CancellationToken cancellationToken) =>
         repository.VerifyMemberAsync(rfidUid, cancellationToken);
+
+    public async Task UpdatePrintStatusAsync(
+        string ticketId,
+        string deviceId,
+        PrintStatusRequest request,
+        CancellationToken cancellationToken)
+    {
+        var status = request.Status?.Trim().ToUpperInvariant();
+        if (status is not ("PRINT_SENT" or "PRINT_CONFIRMED" or "PRINT_FAILED"))
+        {
+            throw new ArgumentException("Status cetak harus PRINT_SENT, PRINT_CONFIRMED, atau PRINT_FAILED.");
+        }
+        if (request.Detail?.Length > 200)
+        {
+            throw new ArgumentException("Detail status cetak maksimal 200 karakter.");
+        }
+
+        await gateRepository.UpdatePrintStatusAsync(
+            ticketId, deviceId, status, request.Detail?.Trim(), cancellationToken);
+    }
+
+    public async Task<ReprintResponse> ReprintAsync(
+        string ticketId,
+        ReprintRequest request,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
+    {
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length < 5 || reason.Length > 200)
+        {
+            throw new ArgumentException("Alasan reprint wajib diisi 5-200 karakter.");
+        }
+
+        var result = await gateRepository.ReprintAsync(ticketId, reason, actorId, sourceIp, cancellationToken)
+            ?? throw new KeyNotFoundException("Tiket tidak ditemukan atau sudah dibatalkan.");
+        return new ReprintResponse(result.TicketId, result.ReprintCount);
+    }
+
+    public async Task RecordGateEventAsync(
+        string ticketId,
+        GateEventRequest request,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
+    {
+        if (request.CommandId == Guid.Empty)
+        {
+            throw new ArgumentException("CommandId wajib berupa UUID.");
+        }
+        var action = request.Action?.Trim().ToUpperInvariant();
+        var status = request.Status?.Trim().ToUpperInvariant();
+        if (action is not ("OPEN" or "CLOSE"))
+        {
+            throw new ArgumentException("Action gate harus OPEN atau CLOSE.");
+        }
+        if (status is not ("SENT" or "ACKNOWLEDGED" or "EXECUTED" or "FAILED"))
+        {
+            throw new ArgumentException("Status command gate tidak valid.");
+        }
+        if (string.IsNullOrWhiteSpace(request.GateId) || request.GateId.Length > 20)
+        {
+            throw new ArgumentException("GateId command tidak valid.");
+        }
+        if (request.Detail?.Length > 200)
+        {
+            throw new ArgumentException("Detail command maksimal 200 karakter.");
+        }
+
+        await gateRepository.RecordGateEventAsync(
+            ticketId,
+            request with
+            {
+                GateId = request.GateId.Trim().ToUpperInvariant(),
+                Action = action,
+                Status = status,
+                Detail = request.Detail?.Trim()
+            },
+            actorId,
+            sourceIp,
+            cancellationToken);
+    }
 
     private async Task<VehicleTypeDto> GetVehicleTypeAsync(long vehicleTypeId, CancellationToken cancellationToken)
     {

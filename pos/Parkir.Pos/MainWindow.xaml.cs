@@ -1173,6 +1173,8 @@ public partial class MainWindow : Window
         string? vehicleClass = null)
     {
         var statuses = new List<string>();
+        var gateCommandId = Guid.NewGuid();
+        var gateId = PosSettings.DeviceId;
         var printerHost = Environment.GetEnvironmentVariable("PARKIR_RECEIPT_HOST");
         if (string.IsNullOrWhiteSpace(printerHost))
         {
@@ -1200,9 +1202,15 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(relayPortName) || string.IsNullOrWhiteSpace(relayCommand))
         {
             statuses.Add("Palang tidak dikonfigurasi; lakukan pembukaan manual.");
+            await ReportGateEventAsync(
+                result.TicketId, gateCommandId, gateId, "OPEN", "FAILED",
+                "Relay gate tidak dikonfigurasi.");
         }
         else
         {
+            await ReportGateEventAsync(
+                result.TicketId, gateCommandId, gateId, "OPEN", "SENT",
+                "Perintah relay akan dikirim.");
             try
             {
                 var baudRate = int.TryParse(Environment.GetEnvironmentVariable("PARKIR_RELAY_BAUD"), out var configuredBaudRate)
@@ -1210,16 +1218,46 @@ public partial class MainWindow : Window
                     : 9600;
                 await Task.Run(() => SendRelayCommand(relayPortName, baudRate, relayCommand));
                 statuses.Add("Perintah buka palang terkirim.");
+                await ReportGateEventAsync(
+                    result.TicketId, gateCommandId, gateId, "OPEN", "EXECUTED",
+                    "Perintah relay serial terkirim.");
             }
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException or ArgumentException or FormatException or
                     InvalidOperationException or TimeoutException)
             {
                 statuses.Add("Relay gagal; lakukan pembukaan manual.");
+                await ReportGateEventAsync(
+                    result.TicketId, gateCommandId, gateId, "OPEN", "FAILED",
+                    "Relay serial gagal; lakukan pembukaan manual.");
             }
         }
 
         return string.Join(" ", statuses);
+    }
+
+    private static async Task ReportGateEventAsync(
+        string ticketId,
+        Guid commandId,
+        string gateId,
+        string action,
+        string status,
+        string? detail)
+    {
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using var response = await Client.PostAsJsonAsync(
+                $"api/transactions/{Uri.EscapeDataString(ticketId)}/gate-event",
+                new GateEventRequest(commandId, gateId, action, status, detail),
+                JsonOptions,
+                timeout.Token);
+            _ = response.StatusCode;
+        }
+        catch (Exception)
+        {
+            // Event gate bersifat audit; kegagalan pelaporan tidak boleh menahan pembayaran.
+        }
     }
 
     private static async Task PrintReceiptAsync(
@@ -1601,6 +1639,13 @@ public partial class MainWindow : Window
         decimal PenaltyFee,
         string PaymentStatus,
         DateTimeOffset TimeOut);
+
+    private sealed record GateEventRequest(
+        Guid CommandId,
+        string GateId,
+        string Action,
+        string Status,
+        string? Detail);
 
     private sealed record PhotoUploadResponse(string Path);
 

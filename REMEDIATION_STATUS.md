@@ -312,3 +312,91 @@ Gelombang 2 — Security hardening: hapus fallback connection string, batasi por
 ## Rekomendasi gelombang berikutnya
 
 Gelombang 3 — Gate and ticket reliability: state machine entry/print/gate, ACK command, reconnect, printer state, dan reprint/cancel dengan audit.
+
+---
+
+# Gelombang 3 — Gate and ticket reliability
+
+## Baseline
+
+- Branch kerja: `fix/gate-reliability`
+- Commit awal: `d158981` (`fix: harden API and device authentication`)
+- Commit akhir: branch head setelah commit Gelombang 3 (lihat `git log -1 --oneline`)
+- Working tree saat baseline: bersih
+- Migration baru: `012_add_ticket_gate_lifecycle.sql`
+
+## Temuan yang diverifikasi/diperbaiki
+
+| ID | Status | Bukti ringkas |
+|---|---|---|
+| R-13 — status printer/tiket | **PARTIAL** | Transaksi memiliki `print_status`; firmware melaporkan `PRINT_SENT`/`PRINT_FAILED`; status fisik printer belum tersedia. |
+| R-15 — command/ACK gate | **PARTIAL** | POS mengirim command gate `SENT` lalu `EXECUTED`/`FAILED` dengan command ID; tabel `gate_commands` menyimpan expiry/status/audit. Belum ada feedback posisi fisik gate. |
+| R-14 — Wi-Fi reconnect | **FIXED (firmware code)** | `ensureWifi()` memakai exponential backoff dan dipanggil dari loop tanpa blocking lama. |
+| Reprint/cancel | **PARTIAL** | Cancel memakai void beralasan yang sudah ada; reprint mencatat alasan dan hitungan di server, tetapi pencetakan fisik tetap lokal. |
+| Idempotent retry | **PARTIAL** | Entry idempotency dan print-status idempotent; command gate memakai command ID, tetapi hardware retry dapat membuat command ID baru. |
+
+## Perubahan yang dilakukan
+
+| File | Ringkasan |
+|---|---|
+| `database/migrations/012_add_ticket_gate_lifecycle.sql` | Kolom `print_status`, `reprint_count`, `last_reprint_at`; tabel `gate_commands`. |
+| `database/schema.sql` | Skema lifecycle cetak dan command gate. |
+| `backend/Parkir.Api/Data/GateRepository.cs` | Transisi print-status, reprint beralasan, command gate + audit. |
+| `backend/Parkir.Api/Services/TicketLifecycle.cs` | Aturan transisi status cetak dan command gate yang dapat diuji. |
+| `backend/Parkir.Api/Services/ParkingService.cs` | Validasi dan orkestrasi print-status/reprint/gate-event. |
+| `backend/Parkir.Api/Controllers/ParkingController.cs` | Endpoint print-status, reprint, dan gate-event. |
+| `firmware/gate_in/gate_in.ino` | Reconnect Wi-Fi backoff dan laporan status cetak. |
+| `pos/Parkir.Pos/MainWindow.xaml.cs` | Laporan command gate `SENT`/`EXECUTED`/`FAILED` dengan timeout 1 detik. |
+| `tests/Parkir.Tests/Program.cs` | Test transisi lifecycle; jumlah migration 11. |
+| `README.md` | Endpoint, status cetak, gate event, reconnect, dan migration 012. |
+
+## Database
+
+- Migration: `012_add_ticket_gate_lifecycle.sql`.
+- Dampak data: kolom baru nullable/default dan tabel command baru; tidak menghapus data.
+- Cara menjalankan: otomatis oleh `DatabaseInitializer`; backup sebelum deploy.
+- Rollback: kolom/tabel baru kompatibel dengan aplikasi lama; migration forward-only.
+
+## Pengujian
+
+| Test | Perintah | Hasil |
+|---|---|---|
+| Build API Release | `dotnet build backend/Parkir.Api/Parkir.Api.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Build POS WPF Release | `dotnet build pos/Parkir.Pos/Parkir.Pos.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Regression tests | `dotnet run --project tests/Parkir.Tests/Parkir.Tests.csproj --configuration Release` | **PASS** — 26/26 |
+| Secret scan | `bash tools/scan-secrets.sh` | **PASS** |
+| Integration PostgreSQL | belum dijalankan | **NOT RUN** — database tidak tersedia |
+| Firmware build/reconnect | `pio run` | **BLOCKED** — PlatformIO tidak terpasang |
+| Printer/gate hardware | belum dijalankan | **BLOCKED** — perangkat fisik tidak tersedia |
+
+## Acceptance criteria Gelombang 3
+
+| Kriteria | Status |
+|---|---|
+| Printer failure tidak membuat tiket ganda | **PARTIAL** — idempotency entry + print status; DB/hardware test belum |
+| Sistem membedakan data dikirim dan bukti cetak | **PASS konsep** — `PRINT_SENT` dipisahkan dari `PRINT_CONFIRMED`; firmware hanya mengirim SENT/FAILED |
+| Command gate memiliki ID/status/audit | **PARTIAL** — implementasi ada; gate feedback fisik belum |
+| Command kedaluwarsa | **PARTIAL** — `expires_at` disimpan; worker expiry belum ada |
+| Reconnect tidak menduplikasi operasi | **PARTIAL** — firmware reconnect code; hardware test belum |
+| Reprint/cancel tercatat | **PARTIAL** — server audit tersedia; reprint fisik lokal belum diuji |
+| Regression test lulus | **PASS** — 26/26 |
+
+## Risiko tersisa
+
+1. `PRINT_SENT` bukan bukti kertas tercetak; printer tanpa status fisik tetap membutuhkan prosedur operator.
+2. Gate command bersifat audit/best-effort dan dikirim setelah pembayaran; kegagalan API tidak menahan relay lokal.
+3. Expiry command hanya disimpan, belum ada proses yang menandai command kedaluwarsa atau memicu alarm.
+4. Hardware retry dapat memakai command ID baru; idempotensi gate belum sempurna.
+5. Integration test PostgreSQL dan uji printer/gate fisik belum dilakukan.
+6. Reprint endpoint mencatat permintaan, bukan memicu printer gate secara otomatis.
+
+## Tindakan yang membutuhkan persetujuan
+
+- Menyediakan PostgreSQL test untuk menguji migration 012 dan transisi command.
+- Menyediakan printer/gate bench untuk uji nyata status cetak dan feedback.
+- Menentukan apakah command gate harus dikirim melalui controller jaringan (Opsi B) atau tetap lokal di POS.
+- Menentukan kebijakan expiry/retry command dan reprint fisik.
+
+## Rekomendasi gelombang berikutnya
+
+Gelombang 4 — POS dan offline reliability: rekonsiliasi queue, status manual review, perlindungan SQLite, dan penanganan scanner/printer/serial yang lebih lengkap.

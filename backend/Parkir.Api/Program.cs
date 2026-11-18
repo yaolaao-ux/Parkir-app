@@ -29,6 +29,7 @@ builder.Services.AddSingleton<BusinessClock>();
 builder.Services.AddHostedService<DatabaseInitializer>();
 builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
 builder.Services.AddScoped<ParkingRepository>();
+builder.Services.AddScoped<GateRepository>();
 builder.Services.AddScoped<ParkingService>();
 builder.Services.AddScoped<AuthRepository>();
 builder.Services.AddScoped<AuditRepository>();

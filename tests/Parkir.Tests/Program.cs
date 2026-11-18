@@ -136,6 +136,17 @@ var tests = new (string Name, Action Run)[]
         AssertTrue(hash != key);
         AssertTrue(DeviceKeyHasher.GenerateKey() != DeviceKeyHasher.GenerateKey());
     }),
+    ("lifecycle tiket hanya mengizinkan transisi yang aman", () =>
+    {
+        AssertTrue(TicketLifecycle.IsPrintTransitionAllowed("PENDING", "PRINT_SENT"));
+        AssertTrue(TicketLifecycle.IsPrintTransitionAllowed("PRINT_SENT", "PRINT_CONFIRMED"));
+        AssertTrue(TicketLifecycle.IsPrintTransitionAllowed("PRINT_SENT", "PRINT_FAILED"));
+        AssertTrue(TicketLifecycle.IsPrintTransitionAllowed("PRINT_FAILED", "PRINT_SENT"));
+        AssertTrue(!TicketLifecycle.IsPrintTransitionAllowed("PRINT_FAILED", "PRINT_CONFIRMED"));
+        AssertTrue(TicketLifecycle.IsGateTransitionAllowed("SENT", "ACKNOWLEDGED"));
+        AssertTrue(TicketLifecycle.IsGateTransitionAllowed("ACKNOWLEDGED", "EXECUTED"));
+        AssertTrue(!TicketLifecycle.IsGateTransitionAllowed("EXECUTED", "FAILED"));
+    }),
     ("antrean checkout bertransisi PENDING ke CONFIRMED ke HARDWARE_DONE", () =>
         WithQueue(queue =>
         {
@@ -214,9 +225,9 @@ var tests = new (string Name, Action Run)[]
                 name.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
-        AssertEqual(10, resources.Count);
+        AssertEqual(11, resources.Count);
         AssertEqual("Migrations.002_add_checkout_idempotency.sql", resources[0]);
-        AssertEqual("Migrations.011_add_device_credentials_and_user_status.sql", resources[^1]);
+        AssertEqual("Migrations.012_add_ticket_gate_lifecycle.sql", resources[^1]);
     }),
     ("endpoint perangkat menolak request tanpa API key termasuk trailing slash", () =>
     {

@@ -13,6 +13,19 @@ public sealed record EntryResponse(
     string? MemberName,
     bool IsNew = true);
 
+public sealed record PrintStatusRequest(string Status, string? Detail = null);
+
+public sealed record ReprintRequest(string Reason);
+
+public sealed record ReprintResponse(string TicketId, int ReprintCount);
+
+public sealed record GateEventRequest(
+    Guid CommandId,
+    string GateId,
+    string Action,
+    string Status,
+    string? Detail = null);
+
 public sealed record QuoteResponse(
     string TicketId,
     DateTimeOffset TimeIn,

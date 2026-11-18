@@ -45,10 +45,59 @@ bool stableButtonState = HIGH;
 uint32_t lastButtonChangeAt = 0;
 uint32_t gateOpenedAt = 0;
 uint32_t lastHeartbeatAt = 0;
+uint32_t lastWifiAttemptAt = 0;
+uint32_t wifiRetryDelayMs = 1000;
 
 void addDeviceHeaders(HTTPClient &http) {
   http.addHeader("X-Device-Id", gateId);
   http.addHeader("X-API-Key", API_KEY);
+}
+
+void ensureWifi() {
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiRetryDelayMs = 1000;
+    return;
+  }
+
+  if (millis() - lastWifiAttemptAt < wifiRetryDelayMs) {
+    return;
+  }
+
+  lastWifiAttemptAt = millis();
+  Serial.printf("Wi-Fi terputus; mencoba reconnect (backoff %lu ms).\n", (unsigned long)wifiRetryDelayMs);
+  WiFi.disconnect();
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  wifiRetryDelayMs = wifiRetryDelayMs < 30000 ? wifiRetryDelayMs * 2 : 30000;
+}
+
+bool reportPrintStatus(const String &ticketId, const char *status, const String &detail) {
+  if (WiFi.status() != WL_CONNECTED) {
+    return false;
+  }
+
+  JsonDocument requestBody;
+  requestBody["status"] = status;
+  if (detail.length() > 0) {
+    requestBody["detail"] = detail;
+  }
+  String body;
+  serializeJson(requestBody, body);
+
+  HTTPClient http;
+  http.setConnectTimeout(750);
+  http.setTimeout(1000);
+  if (!http.begin(String(API_URL) + "/" + ticketId + "/print-status")) {
+    return false;
+  }
+  http.addHeader("Content-Type", "application/json");
+  addDeviceHeaders(http);
+  const int statusCode = http.POST(body);
+  http.end();
+  if (statusCode != HTTP_CODE_NO_CONTENT) {
+    Serial.printf("Laporan status cetak gagal, HTTP %d\n", statusCode);
+    return false;
+  }
+  return true;
 }
 
 bool vehiclePresent() {
@@ -297,7 +346,10 @@ void issueTicket(const String &rfidUid) {
   pendingEntryKey = "";
   Serial.printf("Tiket dibuat: %s\n", ticketId.c_str());
   if (printTicket(ticketId)) {
+    reportPrintStatus(ticketId, "PRINT_SENT", "TCP write selesai; konfirmasi fisik tidak tersedia");
     openGate();
+  } else {
+    reportPrintStatus(ticketId, "PRINT_FAILED", "Printer tidak mengonfirmasi koneksi/tulisan");
   }
 }
 
@@ -360,10 +412,12 @@ void setup() {
   } else {
     Serial.println("Wi-Fi belum terhubung; tiket tidak akan diterbitkan.");
   }
+  lastWifiAttemptAt = millis();
 }
 
 void loop() {
   processGateConfiguration();
+  ensureWifi();
 
   if (WiFi.status() == WL_CONNECTED &&
       (lastHeartbeatAt == 0 || millis() - lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS)) {

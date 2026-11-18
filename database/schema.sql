@@ -105,6 +105,10 @@ CREATE TABLE transactions (
     original_total_fee NUMERIC(12, 2),
     photo_in_path VARCHAR(255),
     photo_out_path VARCHAR(255),
+    print_status VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+        CHECK (print_status IN ('PENDING', 'PRINT_SENT', 'PRINT_CONFIRMED', 'PRINT_FAILED', 'NOT_REQUIRED')),
+    reprint_count INTEGER NOT NULL DEFAULT 0 CHECK (reprint_count >= 0),
+    last_reprint_at TIMESTAMPTZ,
     total_fee NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (total_fee >= 0),
     penalty_fee NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (penalty_fee >= 0),
     payment_status VARCHAR(20) NOT NULL DEFAULT 'UNPAID'
@@ -135,6 +139,22 @@ CREATE INDEX ix_transactions_time_out ON transactions (time_out) WHERE time_out 
 CREATE INDEX ix_members_active_rfid ON members (rfid_uid) WHERE status = 'ACTIVE';
 CREATE UNIQUE INDEX ux_transactions_checkout_id
     ON transactions (checkout_id) WHERE checkout_id IS NOT NULL;
+
+CREATE TABLE gate_commands (
+    command_id UUID PRIMARY KEY,
+    ticket_id VARCHAR(50) NOT NULL REFERENCES transactions(ticket_id) ON DELETE CASCADE,
+    gate_id VARCHAR(20) NOT NULL REFERENCES gates(gate_id),
+    action VARCHAR(20) NOT NULL CHECK (action IN ('OPEN', 'CLOSE')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('SENT', 'ACKNOWLEDGED', 'EXECUTED', 'FAILED')),
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP + INTERVAL '30 seconds',
+    detail VARCHAR(200),
+    actor_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX ix_gate_commands_ticket
+    ON gate_commands (ticket_id, created_at DESC);
 
 INSERT INTO vehicle_types
     (type_name, first_hour_rate, hourly_rate, grace_period_minutes, lost_ticket_fee, max_daily_rate)

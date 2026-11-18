@@ -51,6 +51,102 @@ public sealed class ParkingController(ParkingService parkingService, AdminServic
         }
     }
 
+    [HttpPost("entries/{ticketId}/print-status")]
+    [Authorize(AuthenticationSchemes = ApiKeyAuthenticationHandler.SchemeName)]
+    [EnableRateLimiting("device")]
+    public async Task<IActionResult> UpdatePrintStatus(
+        string ticketId,
+        PrintStatusRequest request,
+        CancellationToken cancellationToken)
+    {
+        var deviceId = User.FindFirstValue(ApiKeyAuthenticationHandler.DeviceIdClaim);
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            await parkingService.UpdatePrintStatusAsync(ticketId, deviceId, request, cancellationToken);
+            return NoContent();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (KeyNotFoundException exception)
+        {
+            return NotFound(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Conflict(new { error = exception.Message });
+        }
+    }
+
+    [HttpPost("entries/{ticketId}/reprint")]
+    [Authorize(Roles = "ADMIN,CASHIER")]
+    public async Task<IActionResult> Reprint(
+        string ticketId,
+        ReprintRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!long.TryParse(userId, out var actorId))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await parkingService.ReprintAsync(
+                ticketId, request, actorId,
+                HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken));
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (KeyNotFoundException exception)
+        {
+            return NotFound(new { error = exception.Message });
+        }
+    }
+
+    [HttpPost("transactions/{ticketId}/gate-event")]
+    [Authorize(Roles = "CASHIER")]
+    public async Task<IActionResult> RecordGateEvent(
+        string ticketId,
+        GateEventRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!long.TryParse(userId, out var actorId))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            await parkingService.RecordGateEventAsync(
+                ticketId, request, actorId,
+                HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            return NoContent();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (KeyNotFoundException exception)
+        {
+            return NotFound(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Conflict(new { error = exception.Message });
+        }
+    }
+
     [HttpPost("transactions/{ticketId}/void")]
     [Authorize(Roles = "ADMIN,CASHIER")]
     public async Task<IActionResult> VoidTicket(
