@@ -1,5 +1,7 @@
 using Microsoft.Data.Sqlite;
 using System.IO;
+using System.Security.AccessControl;
+using System.Security.Principal;
 
 namespace Parkir.Pos;
 
@@ -17,21 +19,29 @@ internal sealed record PendingCheckout(
 internal sealed class CheckoutQueue
 {
     private readonly string _connectionString;
+    private readonly string _logPath;
+    private readonly string _databasePath;
 
     public CheckoutQueue(string? dataDirectory = null)
     {
         var directory = dataDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Parkir", "Pos");
         Directory.CreateDirectory(directory);
+        _databasePath = Path.Combine(directory, "checkout-outbox.db");
+        _logPath = Path.Combine(directory, "outbox.log");
         _connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = Path.Combine(directory, "checkout-outbox.db"),
-            Mode = SqliteOpenMode.ReadWriteCreate
+            DataSource = _databasePath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            DefaultTimeout = 5
         }.ToString();
 
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = """
+            PRAGMA journal_mode=WAL;
+            PRAGMA synchronous=NORMAL;
+            PRAGMA busy_timeout=5000;
             CREATE TABLE IF NOT EXISTS pending_checkouts (
                 idempotency_key TEXT PRIMARY KEY,
                 ticket_id TEXT NOT NULL,
@@ -47,6 +57,7 @@ internal sealed class CheckoutQueue
             """;
         command.ExecuteNonQuery();
         EnsureColumns(connection);
+        RestrictFilePermissions(_databasePath);
     }
 
     public void Enqueue(PendingCheckout item)
@@ -65,6 +76,7 @@ internal sealed class CheckoutQueue
         command.Parameters.AddWithValue("$payload", item.Payload);
         command.Parameters.AddWithValue("$created_at", item.CreatedAt.ToString("O"));
         command.ExecuteNonQuery();
+        Log($"ENQUEUE ticket={item.TicketId} key={item.IdempotencyKey:D}");
     }
 
     public IReadOnlyList<PendingCheckout> GetWorkItems(DateTimeOffset now)
@@ -133,6 +145,7 @@ internal sealed class CheckoutQueue
         command.Parameters.AddWithValue("$error", error);
         command.Parameters.AddWithValue("$next_attempt", DateTimeOffset.UtcNow.Add(delay).ToString("O"));
         command.ExecuteNonQuery();
+        Log($"RETRY ticket_key={idempotencyKey:D} delay={delay.TotalSeconds:0}s error={TrimError(error)}");
     }
 
     public void MarkConfirmed(Guid idempotencyKey, string resultPayload)
@@ -150,6 +163,7 @@ internal sealed class CheckoutQueue
         command.Parameters.AddWithValue("$key", idempotencyKey.ToString("D"));
         command.Parameters.AddWithValue("$result", resultPayload);
         command.ExecuteNonQuery();
+        Log($"CONFIRMED ticket_key={idempotencyKey:D}");
     }
 
     public void MarkFailed(Guid idempotencyKey, string error)
@@ -166,6 +180,7 @@ internal sealed class CheckoutQueue
         command.Parameters.AddWithValue("$key", idempotencyKey.ToString("D"));
         command.Parameters.AddWithValue("$error", error);
         command.ExecuteNonQuery();
+        Log($"FAILED ticket_key={idempotencyKey:D} error={TrimError(error)}");
     }
 
     public void MarkHardwareDone(Guid idempotencyKey)
@@ -179,6 +194,7 @@ internal sealed class CheckoutQueue
             """;
         command.Parameters.AddWithValue("$key", idempotencyKey.ToString("D"));
         command.ExecuteNonQuery();
+        Log($"HARDWARE_DONE ticket_key={idempotencyKey:D}");
     }
 
     public void RetryFailed()
@@ -195,6 +211,7 @@ internal sealed class CheckoutQueue
             """;
         command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
         command.ExecuteNonQuery();
+        Log("RETRY_FAILED_ALL");
     }
 
     public void Remove(Guid idempotencyKey)
@@ -204,6 +221,55 @@ internal sealed class CheckoutQueue
         command.CommandText = "DELETE FROM pending_checkouts WHERE idempotency_key = $key";
         command.Parameters.AddWithValue("$key", idempotencyKey.ToString("D"));
         command.ExecuteNonQuery();
+    }
+
+    private void Log(string message)
+    {
+        try
+        {
+            File.AppendAllText(_logPath, $"{DateTimeOffset.UtcNow:O} {message}{Environment.NewLine}");
+            RestrictFilePermissions(_logPath);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static string TrimError(string error)
+    {
+        var normalized = error.ReplaceLineEndings(" ");
+        return normalized.Length <= 120 ? normalized : normalized[..120];
+    }
+
+    private static void RestrictFilePermissions(string filePath)
+    {
+        if (!OperatingSystem.IsWindows() || !File.Exists(filePath))
+        {
+            return;
+        }
+
+        try
+        {
+            var identity = WindowsIdentity.GetCurrent().User;
+            if (identity is null)
+            {
+                return;
+            }
+
+            var info = new FileInfo(filePath);
+            var security = info.GetAccessControl();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            security.AddAccessRule(new FileSystemAccessRule(
+                identity, FileSystemRights.FullControl, AccessControlType.Allow));
+            info.SetAccessControl(security);
+        }
+        catch (Exception)
+        {
+            // ACL bersifat best-effort; jangan hentikan antrean checkout karena kebijakan filesystem.
+        }
     }
 
     private static IReadOnlyList<PendingCheckout> ReadItems(SqliteCommand command)

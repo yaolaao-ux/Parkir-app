@@ -400,3 +400,85 @@ Gelombang 3 — Gate and ticket reliability: state machine entry/print/gate, ACK
 ## Rekomendasi gelombang berikutnya
 
 Gelombang 4 — POS dan offline reliability: rekonsiliasi queue, status manual review, perlindungan SQLite, dan penanganan scanner/printer/serial yang lebih lengkap.
+
+---
+
+# Gelombang 4 — POS dan offline reliability
+
+## Baseline
+
+- Branch kerja: `fix/pos-offline-reliability`
+- Commit awal: `9b09a14` (`fix: add ticket print and gate lifecycle tracking`)
+- Commit akhir: branch head setelah commit Gelombang 4 (lihat `git log -1 --oneline`)
+- Working tree saat baseline: bersih
+- Migration baru: tidak ada
+
+## Temuan yang diverifikasi/diperbaiki
+
+| ID | Status | Bukti ringkas |
+|---|---|---|
+| R-17 — offline queue | **PARTIAL** | Outbox memakai WAL, busy timeout, retry/backoff, dead-letter, log lokal, status server, dan tombol tindakan. Quote/pembayaran final tetap wajib server. |
+| R-18 — data SQLite | **PARTIAL** | `outbox.log`, mode WAL, busy timeout, dan ACL file best-effort di Windows. DPAPI/enkripsi penuh belum diterapkan. |
+| Peripheral handling | **PARTIAL** | Printer/relay error sudah dilaporkan; scanner tetap HID; belum ada UI pemilihan ulang port/perangkat. |
+| Offline boundary | **FIXED dokumentasi + UI** | POS menampilkan status server offline dan tidak mengizinkan quote baru tanpa server. Checkout yang sudah memiliki quote tetap masuk outbox dan menunggu konfirmasi. |
+| Dead-letter recovery | **PARTIAL** | Daftar item gagal ditampilkan, retry semua tersedia, log tersimpan. Penghapusan/acknowledge per item dan rekonsiliasi finansial penuh belum ada. |
+
+## Perubahan yang dilakukan
+
+| File | Ringkasan |
+|---|---|
+| `pos/Parkir.Pos/CheckoutQueue.cs` | WAL, busy timeout, log outbox, ACL Windows best-effort, operasi queue tetap idempotent. |
+| `pos/Parkir.Pos/MainWindow.xaml.cs` | Status server offline/null/online, detail item gagal, retry all, pesan antrean. |
+| `README.md` | Batas offline, outbox log/ACL, dan kebijakan quote wajib server. |
+| `REMEDIATION_STATUS.md` | Status Gelombang 4. |
+
+## Database
+
+- Migration: tidak ada.
+- Dampak data: tidak ada perubahan skema.
+- Cara menjalankan: tidak applicable.
+- Rollback: tidak applicable.
+
+## Pengujian
+
+| Test | Perintah | Hasil |
+|---|---|---|
+| Build API Release | `dotnet build backend/Parkir.Api/Parkir.Api.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Build POS WPF Release | `dotnet build pos/Parkir.Pos/Parkir.Pos.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Regression tests | `dotnet run --project tests/Parkir.Tests/Parkir.Tests.csproj --configuration Release` | **PASS** — 26/26 |
+| Queue SQLite transition/migration | test runner | **PASS** — PENDING/CONFIRMED/HARDWARE_DONE/FAILED/retry |
+| Secret scan | `bash tools/scan-secrets.sh` | **PASS** |
+| Offline/Windows WPF | belum dijalankan | **NOT RUN** — environment Linux |
+| PostgreSQL integration | belum dijalankan | **NOT RUN** — database tidak tersedia |
+| Printer/relay fisik | belum dijalankan | **BLOCKED** — hardware tidak tersedia |
+
+## Acceptance criteria Gelombang 4
+
+| Kriteria | Status |
+|---|---|
+| Item queue tidak hilang diam-diam | **PARTIAL** — status/log/dead-letter ada; test Windows crash belum |
+| Retry tidak menggandakan checkout | **PASS** — idempotency key persisten; test queue lulus |
+| Pembayaran final offline | **PASS** — tidak diizinkan; quote wajib server |
+| Perangkat peripheral gagal memiliki status | **PARTIAL** — printer/relay status ada; pemulihan UI terbatas |
+| File SQLite dilindungi | **PARTIAL** — ACL Windows best-effort; DPAPI tidak |
+| Queue recovery dapat ditinjau | **PARTIAL** — retry all dan detail; ack/delete per item belum |
+
+## Risiko tersisa
+
+1. Belum ada uji WPF pada Windows; ACL, WAL, dan perilaku saat crash belum diverifikasi di runtime nyata.
+2. `outbox.log` belum memiliki rotasi/retensi.
+3. Item dead-letter hanya bisa di-retry semua; belum ada acknowledge/delete per item dan rekonsiliasi finansial formal.
+4. Scanner dan pemilihan ulang port serial/printer masih manual.
+5. SQLite tidak dienkripsi penuh; hanya ACL file best-effort.
+6. Integration PostgreSQL dan hardware tetap belum dijalankan.
+
+## Tindakan yang membutuhkan persetujuan
+
+- Menyediakan mesin Windows untuk uji WPF, ACL, dan crash recovery.
+- Menentukan kebijakan retensi `outbox.log` dan dead-letter.
+- Menentukan apakah data outbox harus dienkripsi DPAPI/SQLCipher.
+- Menyediakan printer/relay bench untuk uji peripheral.
+
+## Rekomendasi gelombang berikutnya
+
+Gelombang 5 — Membership, tarif, timezone, dan reporting: anti-passback non-member, validasi membership, kebijakan tarif, daily cutover, dan rekonsiliasi laporan.

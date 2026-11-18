@@ -41,6 +41,7 @@ public partial class MainWindow : Window
     private bool _isHeartbeatInProgress;
     private bool _checkoutPending;
     private bool _checkoutRequestInFlight;
+    private bool? _serverReachable;
     private bool _isBusy;
     private bool _isSettingClass;
     private bool _sessionRefreshInProgress;
@@ -556,8 +557,7 @@ public partial class MainWindow : Window
         }
 
         var quote = _currentQuote;
-        var plate = NormalizePlate(PlateInput.Text);
-        var lostTicket = LostTicketCheck.IsChecked == true;
+        var plate = NormalizePlate(PlateInput.Text);        var lostTicket = LostTicketCheck.IsChecked == true;
         var idempotencyKey = Guid.NewGuid();
         var gateId = Environment.GetEnvironmentVariable("PARKIR_GATE_ID")?.Trim().ToUpperInvariant() ?? "GATE-OUT-01";
         var request = new CheckoutRequest(
@@ -1152,13 +1152,13 @@ public partial class MainWindow : Window
                 Environment.GetEnvironmentVariable("PARKIR_DEVICE_NAME") ?? $"Pos - {_session.FullName}",
                 Environment.GetEnvironmentVariable("PARKIR_APP_VERSION") ?? "1.0.0");
             using var response = await Client.PostAsJsonAsync("api/devices/heartbeat", request, JsonOptions);
-            if (response.IsSuccessStatusCode)
-            {
-                UpdateConnectionLabel();
-            }
+            _serverReachable = response.IsSuccessStatusCode;
+            UpdateConnectionLabel();
         }
         catch (Exception)
         {
+            _serverReachable = false;
+            UpdateConnectionLabel();
             // Heartbeat berikutnya akan mencoba lagi.
         }
         finally
@@ -1391,6 +1391,21 @@ public partial class MainWindow : Window
         }
 
         var outstanding = _checkoutQueue.GetOutstandingCount();
+        if (_serverReachable == false)
+        {
+            ConnectionLabel.Text = outstanding == 0
+                ? "Server offline - pembayaran memerlukan server"
+                : $"Server offline - {outstanding} checkout menunggu sinkronisasi";
+            return;
+        }
+        if (_serverReachable is null)
+        {
+            ConnectionLabel.Text = outstanding == 0
+                ? "Memeriksa server..."
+                : $"{outstanding} checkout menunggu sinkronisasi";
+            return;
+        }
+
         ConnectionLabel.Text = outstanding == 0
             ? "API LAN siap"
             : $"{outstanding} checkout menunggu sinkronisasi";
@@ -1417,11 +1432,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        var latest = failed[^1];
+        var details = string.Join(Environment.NewLine,
+            failed.Take(5).Select(item =>
+                $"- {item.TicketId} ({item.AttemptCount}x): {TrimForMessage(item.LastError)}"));
+        var more = failed.Count > 5 ? $"{Environment.NewLine}- ... dan {failed.Count - 5} item lainnya" : string.Empty;
         var answer = MessageBox.Show(
             this,
-            $"Ada {failed.Count} checkout yang ditolak server dan tidak akan dicoba otomatis.\n\n" +
-            $"Tiket terakhir: {latest.TicketId}\nError: {latest.LastError}\n\n" +
+            $"Ada {failed.Count} checkout yang ditolak server dan tidak akan dicoba otomatis.{Environment.NewLine}{Environment.NewLine}" +
+            $"{details}{more}{Environment.NewLine}{Environment.NewLine}" +
             "Pastikan penyebabnya sudah diperbaiki, lalu coba ulang semua?",
             "Antrean checkout gagal",
             MessageBoxButton.YesNo,
@@ -1435,6 +1453,17 @@ public partial class MainWindow : Window
         UpdateConnectionLabel();
         UpdateQueueIssuesButton();
         await SyncPendingCheckoutsAsync();
+    }
+
+    private static string TrimForMessage(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "tanpa detail";
+        }
+
+        var normalized = value.ReplaceLineEndings(" ");
+        return normalized.Length <= 100 ? normalized : normalized[..100];
     }
 
     private void UpdateClock()
