@@ -115,7 +115,10 @@ public sealed class AdminService(
             days,
             days.Sum(day => day.Entries),
             days.Sum(day => day.Exits),
-            days.Sum(day => day.Revenue));
+            days.Sum(day => day.Revenue),
+            days.Sum(day => day.PaidTransactions),
+            days.Sum(day => day.VoidTransactions),
+            days.Sum(day => day.UnpaidEntries));
     }
 
     public Task<IReadOnlyList<VehicleTypeDto>> GetVehicleTypesAsync(CancellationToken cancellationToken) =>
@@ -148,6 +151,22 @@ public sealed class AdminService(
         }
 
         return await repository.CreateMemberAsync(input, actorId, sourceIp, cancellationToken);
+    }
+
+    public async Task<bool> UpdateMemberAsync(
+        long id,
+        MemberUpdateInput input,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(input.FullName) || string.IsNullOrWhiteSpace(input.LicensePlate) ||
+            input.ExpiredDate < clock.Today)
+        {
+            throw new ArgumentException("Nama, plat nomor, dan tanggal aktif yang valid wajib diisi.");
+        }
+
+        return await repository.UpdateMemberAsync(id, input, actorId, sourceIp, cancellationToken);
     }
 
     public async Task<bool> UpdateMemberStatusAsync(

@@ -225,9 +225,9 @@ var tests = new (string Name, Action Run)[]
                 name.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
-        AssertEqual(11, resources.Count);
+        AssertEqual(12, resources.Count);
         AssertEqual("Migrations.002_add_checkout_idempotency.sql", resources[0]);
-        AssertEqual("Migrations.012_add_ticket_gate_lifecycle.sql", resources[^1]);
+        AssertEqual("Migrations.013_add_member_entry_snapshot.sql", resources[^1]);
     }),
     ("endpoint perangkat menolak request tanpa API key termasuk trailing slash", () =>
     {

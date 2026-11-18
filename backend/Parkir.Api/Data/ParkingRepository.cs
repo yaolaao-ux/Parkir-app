@@ -88,11 +88,11 @@ public sealed class ParkingRepository(NpgsqlDataSource dataSource, BusinessClock
                 INSERT INTO transactions
                     (ticket_id, vehicle_type_id, member_id, gate_in_id, time_in, photo_in_path,
                      entry_idempotency_key, entry_request_fingerprint, grace_period_minutes,
-                     first_hour_rate, hourly_rate, lost_ticket_fee, max_daily_rate)
+                     first_hour_rate, hourly_rate, lost_ticket_fee, max_daily_rate, member_entry_valid)
                 SELECT
                     @ticket_id, @vehicle_type_id, @member_id, @gate_id, @time_in, @photo_path,
                     @entry_key, @request_fingerprint, v.grace_period_minutes, v.first_hour_rate,
-                    v.hourly_rate, v.lost_ticket_fee, v.max_daily_rate
+                    v.hourly_rate, v.lost_ticket_fee, v.max_daily_rate, @member_entry_valid
                 FROM vehicle_types v
                 WHERE v.id = @vehicle_type_id
                 ON CONFLICT (gate_in_id, entry_idempotency_key)
@@ -109,6 +109,7 @@ public sealed class ParkingRepository(NpgsqlDataSource dataSource, BusinessClock
             command.Parameters.AddWithValue("photo_path", (object?)request.PhotoInPath ?? DBNull.Value);
             command.Parameters.AddWithValue("entry_key", (object?)idempotencyKey ?? DBNull.Value);
             command.Parameters.AddWithValue("request_fingerprint", requestFingerprint);
+            command.Parameters.AddWithValue("member_entry_valid", memberId is not null);
             EntryPersistResult? created = null;
             await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
             {
@@ -192,7 +193,9 @@ public sealed class ParkingRepository(NpgsqlDataSource dataSource, BusinessClock
     {
         const string sql = """
             SELECT t.ticket_id, t.time_in, t.photo_in_path, t.payment_status,
-                   (m.id IS NOT NULL AND m.status = 'ACTIVE' AND m.expired_date >= @today),
+                   COALESCE(
+                       t.member_entry_valid,
+                       (m.id IS NOT NULL AND m.status = 'ACTIVE' AND m.expired_date >= @today)),
                    m.full_name,
                    COALESCE(t.grace_period_minutes, v.grace_period_minutes),
                    COALESCE(t.first_hour_rate, v.first_hour_rate),

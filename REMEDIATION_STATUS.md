@@ -482,3 +482,91 @@ Gelombang 4 — POS dan offline reliability: rekonsiliasi queue, status manual r
 ## Rekomendasi gelombang berikutnya
 
 Gelombang 5 — Membership, tarif, timezone, dan reporting: anti-passback non-member, validasi membership, kebijakan tarif, daily cutover, dan rekonsiliasi laporan.
+
+---
+
+# Gelombang 5 — Membership, tarif, timezone, dan reporting
+
+## Baseline
+
+- Branch kerja: `fix/membership-timezone-reporting`
+- Commit awal: `3bc8691` (`fix: improve POS offline queue reliability`)
+- Commit akhir: branch head setelah commit Gelombang 5 (lihat `git log -1 --oneline`)
+- Working tree saat baseline: bersih
+- Migration baru: `013_add_member_entry_snapshot.sql`
+
+## Temuan yang diverifikasi/diperbaiki
+
+| ID | Status | Bukti ringkas |
+|---|---|---|
+| R-08 — anti-passback | **PARTIAL** | Member RFID aktif dicek saat entry; non-member belum punya identitas plat pada alur entry. |
+| Membership expiry | **FIXED (policy)** | Status valid saat entry disimpan di `member_entry_valid`; benefit member tidak berubah karena expiry/status di tengah sesi. |
+| Renewal member | **PARTIAL** | Endpoint `PUT /api/admin/members/{id}` memperbarui nama/plat/kelas/expiry dengan audit; UI dashboard belum memakai endpoint ini. |
+| R-19 — timezone | **PARTIAL** | `Business:TimeZone` dipakai untuk laporan/dashboard/tanggal; lokasi operasional final belum ditetapkan. |
+| Tarif | **FIXED dokumentasi** | Formula grace/rounding/max daily/lost ticket didokumentasikan; snapshot tarif sudah ada. |
+| Reporting reconciliation | **PARTIAL** | Laporan API/CSV menambahkan Paid/Void/Unpaid; dashboard lama tetap kompatibel tetapi belum menampilkan kolom baru. |
+
+## Perubahan yang dilakukan
+
+| File | Ringkasan |
+|---|---|
+| `database/migrations/013_add_member_entry_snapshot.sql` | Kolom `member_entry_valid` nullable untuk snapshot benefit member. |
+| `database/schema.sql` | Kolom snapshot membership. |
+| `backend/Parkir.Api/Data/ParkingRepository.cs` | Set snapshot saat entry; quote memakai snapshot dengan fallback data lama. |
+| `backend/Parkir.Api/Data/AdminRepository.cs` | Update member/renewal + audit atomic; laporan menambahkan hitungan Paid/Void/Unpaid. |
+| `backend/Parkir.Api/Services/AdminService.cs` | Validasi renewal dan total report baru. |
+| `backend/Parkir.Api/Controllers/AdminController.cs` | Endpoint update member dan CSV reconciliation. |
+| `backend/Parkir.Api/Models/ParkingDtos.cs` | DTO membership update dan kolom report. |
+| `README.md` | Kebijakan membership, formula tarif, anti-passback, report, migration 013. |
+| `tests/Parkir.Tests/Program.cs` | Jumlah migration 12; test sebelumnya tetap lulus. |
+
+## Database
+
+- Migration: `013_add_member_entry_snapshot.sql`.
+- Dampak data: kolom nullable; ticket lama memakai fallback status member saat ini.
+- Cara menjalankan: otomatis oleh `DatabaseInitializer`; backup sebelum deploy.
+- Rollback: kolom nullable; migration forward-only.
+
+## Pengujian
+
+| Test | Perintah | Hasil |
+|---|---|---|
+| Build API Release | `dotnet build backend/Parkir.Api/Parkir.Api.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Build POS WPF Release | `dotnet build pos/Parkir.Pos/Parkir.Pos.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Regression tests | `dotnet run --project tests/Parkir.Tests/Parkir.Tests.csproj --configuration Release` | **PASS** — 26/26 |
+| Secret scan | `bash tools/scan-secrets.sh` | **PASS** |
+| Integration PostgreSQL | belum dijalankan | **NOT RUN** — database tidak tersedia |
+| Timezone/report DB | belum dijalankan | **NOT RUN** — butuh data uji |
+| Member renewal UI | belum dijalankan | **NOT RUN** — endpoint belum dipakai dashboard |
+
+## Acceptance criteria Gelombang 5
+
+| Kriteria | Status |
+|---|---|
+| Membership valid saat entry | **PASS** — snapshot disimpan |
+| Expiry/status di tengah sesi tidak mengubah tarif | **PASS** — policy snapshot |
+| Renewal member beralasan/audit | **PARTIAL** — endpoint ada; UI/test DB belum |
+| Formula tarif eksplisit | **PASS dokumentasi** |
+| Timezone konsisten | **PARTIAL** — config dan test batas hari; lokasi final belum |
+| Report dapat direkonsiliasi | **PARTIAL** — field status tersedia; dashboard belum menampilkan |
+| Regression test | **PASS** — 26/26 |
+
+## Risiko tersisa
+
+1. Kebijakan snapshot member berarti penangguhan/expiry setelah entry tidak mengubah tarif sesi; ini keputusan bisnis yang perlu disetujui.
+2. Non-member tetap belum memiliki anti-passback karena entry tidak mengirim plat/RFID.
+3. Kolom report baru belum ditampilkan di dashboard; hanya API/CSV.
+4. `UnpaidEntries` adalah kondisi saat laporan diambil, sehingga laporan historis dapat berubah saat tiket terbuka ditutup.
+5. Timezone lokasi operasional final belum ditentukan; default `Asia/Jakarta` harus dikonfirmasi.
+6. Migration/report/membership belum diuji pada PostgreSQL nyata.
+
+## Tindakan yang membutuhkan persetujuan
+
+- Menyetujui kebijakan benefit member saat entry vs exit.
+- Menentukan timezone lokasi operasional.
+- Menentukan apakah dashboard perlu menampilkan kolom Paid/Void/Unpaid.
+- Menyediakan database test untuk membership/renewal/report.
+
+## Rekomendasi gelombang berikutnya
+
+Gelombang 6 — QA, CI, monitoring, backup: integration/E2E tests, dependency/secret scan, structured logging, health alert, dan restore drill.

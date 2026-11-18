@@ -92,6 +92,7 @@ CREATE TABLE transactions (
     lost_ticket_fee NUMERIC(12, 2),
     max_daily_rate NUMERIC(12, 2),
     member_id BIGINT REFERENCES members(id),
+    member_entry_valid BOOLEAN,
     gate_in_id VARCHAR(20) NOT NULL,
     entry_idempotency_key VARCHAR(100),
     entry_request_fingerprint VARCHAR(64),

@@ -132,19 +132,25 @@ public sealed class AdminController(AdminService adminService) : ControllerBase
         try
         {
             var report = await adminService.GetReportAsync(from, to, cancellationToken);
-            var csv = new StringBuilder("Tanggal,Jumlah Masuk,Jumlah Keluar,Pendapatan\r\n");
+            var csv = new StringBuilder("Tanggal,Jumlah Masuk,Jumlah Keluar,Pendapatan,Transaksi Dibayar,Void,Unpaid\r\n");
             foreach (var day in report.Days)
             {
                 csv.Append(day.ReportDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).Append(',')
                     .Append(day.Entries.ToString(CultureInfo.InvariantCulture)).Append(',')
                     .Append(day.Exits.ToString(CultureInfo.InvariantCulture)).Append(',')
-                    .Append(day.Revenue.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+                    .Append(day.Revenue.ToString(CultureInfo.InvariantCulture)).Append(',')
+                    .Append(day.PaidTransactions.ToString(CultureInfo.InvariantCulture)).Append(',')
+                    .Append(day.VoidTransactions.ToString(CultureInfo.InvariantCulture)).Append(',')
+                    .Append(day.UnpaidEntries.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
             }
 
             csv.Append("TOTAL,")
                 .Append(report.TotalEntries.ToString(CultureInfo.InvariantCulture)).Append(',')
                 .Append(report.TotalExits.ToString(CultureInfo.InvariantCulture)).Append(',')
-                .Append(report.TotalRevenue.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+                .Append(report.TotalRevenue.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(report.TotalPaidTransactions.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(report.TotalVoidTransactions.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(report.TotalUnpaidEntries.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
             var content = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
             return File(content, "text/csv; charset=utf-8", $"laporan-parkir-{from:yyyyMMdd}-{to:yyyyMMdd}.csv");
         }
@@ -203,6 +209,25 @@ public sealed class AdminController(AdminService adminService) : ControllerBase
             var id = await adminService.CreateMemberAsync(
                 input, actorId, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
             return Created($"/api/admin/members/{id}", new { id });
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpPut("members/{id:long}")]
+    public async Task<IActionResult> UpdateMember(
+        long id,
+        MemberUpdateInput input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var updated = await adminService.UpdateMemberAsync(
+                id, input, GetActorId(),
+                HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            return updated ? NoContent() : NotFound();
         }
         catch (ArgumentException exception)
         {

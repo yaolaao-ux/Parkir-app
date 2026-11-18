@@ -76,9 +76,9 @@ Endpoint utama:
 | `GET` | `/api/members/{rfidUid}/verify` | Memverifikasi member aktif |
 | `GET` | `/api/admin/dashboard` | Statistik kendaraan dan pendapatan hari ini (role `ADMIN`) |
 | `GET`, `POST`, `PUT` | `/api/admin/vehicle-types` | Membaca dan mengatur tarif (role `ADMIN`) |
-| `GET`, `POST`, `PUT` | `/api/admin/members` | Membaca, mendaftarkan, dan mengubah status member (role `ADMIN`) |
+| `GET`, `POST`, `PUT` | `/api/admin/members` | Membaca, mendaftarkan, memperbarui, dan mengubah status member (role `ADMIN`) |
 | `GET` | `/api/admin/reports?from=YYYY-MM-DD&to=YYYY-MM-DD` | Laporan harian, maksimal 366 hari (role `ADMIN`) |
-| `GET` | `/api/admin/reports/export.csv?from=...&to=...` | Unduh laporan CSV (role `ADMIN`) |
+| `GET` | `/api/admin/reports/export.csv?from=...&to=...` | Unduh laporan CSV termasuk transaksi dibayar/void/unpaid (role `ADMIN`) |
 | `POST` | `/api/media/entries` | Upload JPEG/PNG/WebP masuk (kredensial perangkat, maksimal 5 MB) |
 | `POST` | `/api/media/exits` | Upload foto keluar (JWT `CASHIER`, maksimal 5 MB) |
 | `GET` | `/api/media/{yyyy-MM-dd}/{fileName}` | Ambil foto masuk untuk perbandingan visual (JWT `CASHIER`) |
@@ -115,9 +115,11 @@ curl -X POST http://localhost:5080/api/entries \
   -d '{"gateId":"GATE-IN-01","vehicleTypeId":1,"photoInPath":null,"rfidUid":null,"idempotencyKey":"GATE-IN-01-12345"}'
 ```
 
-`idempotencyKey` unik per gate mencegah tiket ganda saat firmware mengulang request setelah timeout. Request dengan kunci dan payload yang sama mengembalikan tiket pertama dengan `isNew=false`; kunci yang sama dengan gate/jenis/RFID berbeda ditolak `409`. Untuk member RFID, satu member hanya boleh memiliki satu sesi aktif; pelanggaran ditolak dan dicatat. Firmware melaporkan status cetak tiket melalui `/api/entries/{ticketId}/print-status`; status `PRINT_SENT` berarti data sudah dikirim ke printer, bukan bukti fisik kertas tercetak.
+`idempotencyKey` unik per gate mencegah tiket ganda saat firmware mengulang request setelah timeout. Request dengan kunci dan payload yang sama mengembalikan tiket pertama dengan `isNew=false`; kunci yang sama dengan gate/jenis/RFID berbeda ditolak `409`. Untuk member RFID, satu member hanya boleh memiliki satu sesi aktif; pelanggaran ditolak dan dicatat. Status member yang valid saat entry disimpan pada sesi (`member_entry_valid`), sehingga perubahan status/expiry di tengah masa parkir tidak mengubah tarif sesi tersebut. Firmware melaporkan status cetak tiket melalui `/api/entries/{ticketId}/print-status`; status `PRINT_SENT` berarti data sudah dikirim ke printer, bukan bukti fisik kertas tercetak.
 
 Checkout reguler mengirim `gateId`, `paymentMethod`, `lostTicket:false`, `identityVerified:false`, `photoOutPath:null`, `idempotencyKey` berupa UUID, `vehicleTypeId`, `licensePlate`, `overrideReason`, dan `expectedTotalFee`. Plat nomor wajib diisi; untuk masa transisi client lama, validasi server dapat dimatikan sementara dengan `Checkout__RequireLicensePlate=false`. Jika `vehicleTypeId` berbeda dari kelas tiket, `overrideReason` wajib diisi 5-200 karakter; server menyimpan kelas asal, tarif asal, alasan, dan selisih tarif di audit. `expectedTotalFee` adalah total yang dilihat kasir; jika tarif berubah sebelum checkout, server menolak dengan `400` agar kasir memuat ulang tiket dan tidak terjadi kurang bayar. Karcis hilang harus mengirim `lostTicket:true` serta `identityVerified:true`. Kunci idempotency yang sama akan mengembalikan hasil checkout pertama, sehingga retry setelah timeout tidak menggandakan transaksi.
+
+Formula tarif: grace period gratis; sisa durasi dibulatkan ke atas per menit lalu per jam; `max_daily_rate` adalah batas per 24 jam berjalan (sesi 25 jam memakai dua batas harian); denda karcis hilang = `lost_ticket_fee` + `max_daily_rate`. Tarif sesi memakai snapshot saat entry, bukan tarif admin yang berubah di tengah sesi. Member yang valid saat entry mempertahankan benefit member untuk sesi tersebut; non-member belum memiliki identitas plat saat entry sehingga anti-passback hanya berlaku untuk member RFID.
 
 Void tiket yang belum dibayar:
 
@@ -201,7 +203,7 @@ Printer tiket masuk menggunakan ESC/POS melalui TCP port 9100. Pembukaan palang 
 ## Deploy dan rollback
 
 1. Backup database sebelum deploy.
-2. Deploy API. Migration `002`-`012` diterapkan otomatis oleh runner dan dicatat di `schema_migrations`; cek `GET /health` sampai `200`.
+2. Deploy API. Migration `002`-`013` diterapkan otomatis oleh runner dan dicatat di `schema_migrations`; cek `GET /health` sampai `200`.
 3. Terbitkan kredensial unik untuk setiap gate/POS melalui endpoint admin. Jangan memakai key yang sama untuk beberapa perangkat.
 4. Deploy POS baru. Verifikasi login ulang, antrean checkout, cetak struk, dan relay di bench.
 5. Deploy firmware dengan `X-Device-Id` dan kredensial gate masing-masing.

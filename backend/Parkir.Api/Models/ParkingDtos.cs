@@ -130,11 +130,20 @@ public sealed record MemberInput(
 
 public sealed record MemberStatusInput(string Status);
 
+public sealed record MemberUpdateInput(
+    string FullName,
+    string LicensePlate,
+    long? VehicleTypeId,
+    DateOnly ExpiredDate);
+
 public sealed record DailyReportRow(
     DateOnly ReportDate,
     long Entries,
     long Exits,
-    decimal Revenue);
+    decimal Revenue,
+    long PaidTransactions,
+    long VoidTransactions,
+    long UnpaidEntries);
 
 public sealed record ParkingReport(
     DateOnly From,
@@ -142,7 +151,10 @@ public sealed record ParkingReport(
     IReadOnlyList<DailyReportRow> Days,
     long TotalEntries,
     long TotalExits,
-    decimal TotalRevenue);
+    decimal TotalRevenue,
+    long TotalPaidTransactions,
+    long TotalVoidTransactions,
+    long TotalUnpaidEntries);
 
 public sealed record DeviceHeartbeatRequest(
     string DeviceId,

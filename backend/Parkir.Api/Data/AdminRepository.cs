@@ -180,7 +180,22 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
                        WHERE t.time_out >= (d.report_date::timestamp AT TIME ZONE @time_zone)
                          AND t.time_out < ((d.report_date + 1)::timestamp AT TIME ZONE @time_zone)
                          AND t.payment_status IN ('PAID', 'LOST_TICKET')
-                   ), 0)
+                   ), 0),
+                   count(t.ticket_id) FILTER (
+                       WHERE t.time_out >= (d.report_date::timestamp AT TIME ZONE @time_zone)
+                         AND t.time_out < ((d.report_date + 1)::timestamp AT TIME ZONE @time_zone)
+                         AND t.payment_status IN ('PAID', 'MEMBER', 'LOST_TICKET')
+                   ),
+                   count(t.ticket_id) FILTER (
+                       WHERE t.time_out >= (d.report_date::timestamp AT TIME ZONE @time_zone)
+                         AND t.time_out < ((d.report_date + 1)::timestamp AT TIME ZONE @time_zone)
+                         AND t.payment_status = 'VOID'
+                   ),
+                   count(t.ticket_id) FILTER (
+                       WHERE t.time_in >= (d.report_date::timestamp AT TIME ZONE @time_zone)
+                         AND t.time_in < ((d.report_date + 1)::timestamp AT TIME ZONE @time_zone)
+                         AND t.payment_status = 'UNPAID'
+                   )
             FROM report_days d
             LEFT JOIN transactions t ON (
                 (t.time_in >= (d.report_date::timestamp AT TIME ZONE @time_zone)
@@ -204,7 +219,10 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
                 reader.GetFieldValue<DateOnly>(0),
                 reader.GetInt64(1),
                 reader.GetInt64(2),
-                reader.GetDecimal(3)));
+                reader.GetDecimal(3),
+                reader.GetInt64(4),
+                reader.GetInt64(5),
+                reader.GetInt64(6)));
         }
 
         return days;
@@ -363,6 +381,39 @@ public sealed class AdminRepository(NpgsqlDataSource dataSource)
             id.ToString(), input, sourceIp, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return id;
+    }
+
+    public async Task<bool> UpdateMemberAsync(
+        long id,
+        MemberUpdateInput input,
+        long actorId,
+        string? sourceIp,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE members
+            SET full_name = @name, license_plate = @plate,
+                vehicle_type_id = @vehicle_type_id, expired_date = @expired
+            WHERE id = @id
+            """;
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("name", input.FullName.Trim());
+        command.Parameters.AddWithValue("plate", input.LicensePlate.Trim().ToUpperInvariant());
+        command.Parameters.AddWithValue("vehicle_type_id", input.VehicleTypeId is null ? DBNull.Value : input.VehicleTypeId.Value);
+        command.Parameters.AddWithValue("expired", input.ExpiredDate);
+        var updated = await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        if (updated)
+        {
+            await WriteAuditAsync(
+                connection, transaction, actorId, "MEMBER_UPDATED", "MEMBER",
+                id.ToString(), input, sourceIp, cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
     }
 
     public async Task<bool> UpdateMemberStatusAsync(
