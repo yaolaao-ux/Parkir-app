@@ -202,6 +202,14 @@ ESP32 dicatu melalui USB regulated 5 V. Printer, kamera, dan server tersambung k
 
 Printer tiket masuk menggunakan ESC/POS melalui TCP port 9100. Pembukaan palang hanya terjadi setelah server membuat tiket dan printer menerima koneksi. Palang menutup setelah sensor menyatakan area kosong; gunakan juga kontrol keselamatan/fotokel independen dan interlock hardware yang sesuai. Kegagalan Wi-Fi/API berarti tiket tidak diterbitkan dan palang tidak dibuka.
 
+## 6. Dokumentasi perangkat dan pilot
+
+- [`docs/adr/0001-gate-out-architecture.md`](docs/adr/0001-gate-out-architecture.md) — keputusan arsitektur Gate-Out.
+- [`docs/DEVICE_MAPPING.md`](docs/DEVICE_MAPPING.md) — template pemetaan gate/perangkat (tanpa secret).
+- [`docs/HARDWARE_TEST_PLAN.md`](docs/HARDWARE_TEST_PLAN.md) — prosedur bench/hardware-in-the-loop.
+- [`docs/PILOT_READINESS.md`](docs/PILOT_READINESS.md) — checklist go/no-go pilot.
+- [`hardware/gate_in/wiring.md`](hardware/gate_in/wiring.md) dan [`hardware/gate_out/wiring.md`](hardware/gate_out/wiring.md) — wiring Gate-In/Gate-Out.
+
 ## Deploy dan rollback
 
 1. Backup database sebelum deploy.

@@ -646,3 +646,60 @@ Gelombang 6 — QA, CI, monitoring, backup: integration/E2E tests, dependency/se
 ## Rekomendasi gelombang berikutnya
 
 Gelombang 7 — Integrasi perangkat dan pilot readiness: wiring/device mapping, Gate-In/Gate-Out bench test, command/feedback, hardware-in-the-loop, checklist keselamatan, dan pilot checklist.
+
+---
+
+# Gelombang 7 — Integrasi perangkat dan pilot readiness
+
+## Baseline
+
+- Branch kerja: `test/hardware-pilot`
+- Commit awal: `bbdff0d` (`test: add CI database smoke and operations runbook`)
+- Commit akhir: branch head setelah commit Gelombang 7 (lihat `git log -1 --oneline`)
+- Working tree saat baseline: bersih
+- Migration baru: tidak ada
+
+## Perubahan yang dilakukan
+
+| File | Ringkasan |
+|---|---|
+| `docs/adr/0001-gate-out-architecture.md` | ADR Opsi A/B; status keputusan masih menunggu pemilik sistem. |
+| `docs/DEVICE_MAPPING.md` | Template pemetaan Gate ID/Device ID, firmware, IP, status kredensial; tanpa secret. |
+| `docs/HARDWARE_TEST_PLAN.md` | Skenario Gate-In, Gate-Out, printer, reconnect, command, dan keselamatan; semua status awal NOT RUN. |
+| `docs/PILOT_READINESS.md` | Checklist keamanan, transaksi, gate, operasional, go/no-go, dan larangan production approval oleh agent. |
+| `hardware/gate_out/wiring.md` | Template wiring/bench Gate-Out Opsi A dan peringatan keselamatan. |
+| `README.md` | Tautan dokumentasi perangkat/pilot. |
+
+## Pengujian
+
+| Test | Perintah | Hasil |
+|---|---|---|
+| Build API Release | `dotnet build backend/Parkir.Api/Parkir.Api.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Build POS WPF Release | `dotnet build pos/Parkir.Pos/Parkir.Pos.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Regression tests | `dotnet run --project tests/Parkir.Tests/Parkir.Tests.csproj --configuration Release` | **PASS** — 26/26 |
+| Secret scan | `bash tools/scan-secrets.sh` | **PASS** |
+| Gate-In hardware scenarios | `docs/HARDWARE_TEST_PLAN.md` | **NOT RUN** — hardware tidak tersedia |
+| Gate-Out hardware scenarios | `docs/HARDWARE_TEST_PLAN.md` | **NOT RUN** — hardware tidak tersedia |
+| Emergency stop/anti-crush | uji fisik teknisi | **BLOCKED** — membutuhkan teknisi dan barrier |
+| Pilot checklist | `docs/PILOT_READINESS.md` | **BLOCKED** — belum ada tanda tangan/go-no-go |
+
+## Status akhir
+
+- **Code complete:** sebagian besar gelombang coding selesai; beberapa item tetap PARTIAL.
+- **Test verified:** unit/regression PASS; integration database dan hardware NOT RUN.
+- **Staging verified:** belum.
+- **Hardware verified:** belum.
+- **Pilot ready:** **BELUM**.
+- **Production approved:** bukan kewenangan agent.
+
+## Risiko/keputusan terbuka
+
+1. ADR Gate-Out (Opsi A vs B) belum diputuskan.
+2. Safety hardware belum diverifikasi teknisi; pilot tidak boleh dimulai.
+3. Integration PostgreSQL, CI database smoke, dan backup/restore drill belum dieksekusi nyata.
+4. WPF runtime/ACL dan firmware belum diuji pada lingkungan target.
+5. Beberapa fitur masih PARTIAL: anti-passback non-member, dead-letter reconciliation, expiry command gate, feedback posisi gate, dan reprint fisik.
+
+## Rekomendasi
+
+Lakukan bench test `docs/HARDWARE_TEST_PLAN.md`, selesaikan ADR Gate-Out, jalankan CI/restore drill di staging, lalu isi `docs/PILOT_READINESS.md` dan minta persetujuan pemilik sistem.
