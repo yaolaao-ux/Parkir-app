@@ -10,7 +10,7 @@ Isi tabel ini saat commissioning. Jangan menulis API key, password, atau private
 
 ## Aturan
 
-- `Device ID` untuk gate harus sama dengan `Gate ID` yang didaftarkan admin. POS memakai `PARKIR_DEVICE_ID`/`PARKIR_GATE_ID`.
+- `Device ID` adalah identitas autentikasi perangkat; `Gate ID` adalah gate yang dipakai transaksi. POS memakai `PARKIR_DEVICE_ID` untuk header autentikasi dan `PARKIR_GATE_ID` untuk checkout/gate event. Keduanya boleh berbeda, tetapi harus sesuai data admin/device mapping.
 - Kredensial diterbitkan per device melalui `POST /api/admin/devices/{deviceId}/credential`; key hanya ditampilkan sekali.
 - Satu key tidak boleh dipakai beberapa perangkat.
 - Perangkat yang diganti harus dicabut kredensial lamanya.
@@ -20,6 +20,7 @@ Isi tabel ini saat commissioning. Jangan menulis API key, password, atau private
 ## Checklist commissioning
 
 - [ ] Gate ID di NVS/perangkat benar.
+- [ ] Device key dikirim via Serial `SET_DEVICE_KEY=...` dan tersimpan di NVS; tidak ada di source code.
 - [ ] Gate terdaftar dan aktif di dashboard admin.
 - [ ] Kredensial device diterbitkan dan diuji.
 - [ ] Heartbeat terlihat online.

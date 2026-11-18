@@ -27,6 +27,7 @@ services:
       ConnectionStrings__Parking: "Host=db;Port=5432;Database=parkir;Username=parkir;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
       Security__JwtSigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in .env}
       Security__RequireHttps: ${REQUIRE_HTTPS:-false}
+      Security__TrustProxyHeaders: ${TRUST_PROXY_HEADERS:-false}
       Storage__ImageRoot: /var/lib/parkir/images
       Business__TimeZone: ${BUSINESS_TIME_ZONE:-Asia/Jakarta}
       TZ: ${BUSINESS_TIME_ZONE:-Asia/Jakarta}

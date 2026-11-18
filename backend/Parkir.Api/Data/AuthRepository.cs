@@ -20,4 +20,14 @@ public sealed class AuthRepository(NpgsqlDataSource dataSource)
             ? new UserAccount(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4))
             : null;
     }
+
+    public async Task<bool?> IsActiveAsync(long userId, CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT is_active FROM users WHERE id = @id";
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("id", userId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is null ? null : (bool)result;
+    }
 }

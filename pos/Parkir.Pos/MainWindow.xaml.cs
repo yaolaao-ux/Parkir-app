@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     private bool _checkoutPending;
     private bool _checkoutRequestInFlight;
     private bool? _serverReachable;
+    private bool _deviceCredentialRejected;
     private bool _isBusy;
     private bool _isSettingClass;
     private bool _sessionRefreshInProgress;
@@ -557,9 +558,10 @@ public partial class MainWindow : Window
         }
 
         var quote = _currentQuote;
-        var plate = NormalizePlate(PlateInput.Text);        var lostTicket = LostTicketCheck.IsChecked == true;
+        var plate = NormalizePlate(PlateInput.Text);
+        var lostTicket = LostTicketCheck.IsChecked == true;
         var idempotencyKey = Guid.NewGuid();
-        var gateId = Environment.GetEnvironmentVariable("PARKIR_GATE_ID")?.Trim().ToUpperInvariant() ?? "GATE-OUT-01";
+        var gateId = PosSettings.GateId;
         var request = new CheckoutRequest(
             GateId: gateId,
             PaymentMethod: _selectedPaymentMethod,
@@ -841,7 +843,8 @@ public partial class MainWindow : Window
 
     private bool IsCheckoutReady()
     {
-        if (_currentQuote is null || _checkoutPending || _checkoutRequestInFlight || _isBusy || IsSessionExpired)
+        if (_currentQuote is null || _checkoutPending || _checkoutRequestInFlight || _isBusy ||
+            IsSessionExpired || _deviceCredentialRejected)
         {
             return false;
         }
@@ -883,6 +886,10 @@ public partial class MainWindow : Window
         if (IsSessionExpired)
         {
             return "Sesi kasir berakhir. Login ulang sebelum memproses pembayaran.";
+        }
+        if (_deviceCredentialRejected)
+        {
+            return "Kredensial perangkat ditolak. Hubungi admin untuk rotasi kredensial.";
         }
         if (NormalizePlate(PlateInput.Text).Length == 0)
         {
@@ -1153,6 +1160,11 @@ public partial class MainWindow : Window
                 Environment.GetEnvironmentVariable("PARKIR_APP_VERSION") ?? "1.0.0");
             using var response = await Client.PostAsJsonAsync("api/devices/heartbeat", request, JsonOptions);
             _serverReachable = response.IsSuccessStatusCode;
+            _deviceCredentialRejected = response.StatusCode == HttpStatusCode.Unauthorized;
+            if (_deviceCredentialRejected)
+            {
+                MessageLabel.Text = "Kredensial perangkat ditolak. Hubungi admin untuk rotasi kredensial.";
+            }
             UpdateConnectionLabel();
         }
         catch (Exception)
@@ -1174,7 +1186,7 @@ public partial class MainWindow : Window
     {
         var statuses = new List<string>();
         var gateCommandId = Guid.NewGuid();
-        var gateId = PosSettings.DeviceId;
+        var gateId = PosSettings.GateId;
         var printerHost = Environment.GetEnvironmentVariable("PARKIR_RECEIPT_HOST");
         if (string.IsNullOrWhiteSpace(printerHost))
         {
@@ -1387,6 +1399,11 @@ public partial class MainWindow : Window
         if (IsSessionExpired)
         {
             ConnectionLabel.Text = "Sesi kasir berakhir - login ulang";
+            return;
+        }
+        if (_deviceCredentialRejected)
+        {
+            ConnectionLabel.Text = "Kredensial perangkat ditolak - hubungi admin";
             return;
         }
 

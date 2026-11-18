@@ -24,5 +24,25 @@ command -v pg_restore >/dev/null 2>&1 || {
     exit 1
 }
 
+if [ -f "$backup_file.sha256" ]; then
+    expected=$(awk '{print $1}' "$backup_file.sha256")
+    actual=$(sha256sum "$backup_file" | awk '{print $1}')
+    if [ "$expected" != "$actual" ]; then
+        echo "Checksum backup tidak cocok; restore dibatalkan." >&2
+        exit 1
+    fi
+fi
+
+db_name=$(psql "$DATABASE_URL" -Atc 'SELECT current_database()' 2>/dev/null || true)
+case "$db_name" in
+    *_restore|*_test) ;;
+    *)
+        if [ "${PARKIR_ALLOW_NON_TEST_RESTORE:-}" != "YES" ]; then
+            echo "Target '$db_name' bukan database _restore/_test. Set PARKIR_ALLOW_NON_TEST_RESTORE=YES hanya untuk kasus darurat yang disetujui." >&2
+            exit 1
+        fi
+        ;;
+esac
+
 pg_restore "$backup_file" --dbname "$DATABASE_URL" --clean --if-exists --no-owner
-echo "Restore selesai ke database tujuan."
+echo "Restore selesai ke database tujuan: $db_name"

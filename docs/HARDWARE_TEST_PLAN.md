@@ -24,7 +24,7 @@ Memvalidasi Gate-In, Gate-Out, printer, sensor, reconnect, command/ACK, dan kese
 - [ ] Polaritas sensor loop/photoeye sesuai; output 12/24 V tidak langsung ke GPIO.
 - [ ] ESP32 dan relay module mendapat catu sesuai datasheet.
 - [ ] Semua kabel diberi label; tidak ada kabel terbuka.
-- [ ] Firmware terbaru dan gate ID benar.
+- [ ] Firmware terbaru, gate ID benar, dan device key sudah diset via NVS (bukan source code).
 
 ## 4. Gate-In
 

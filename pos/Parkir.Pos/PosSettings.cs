@@ -17,4 +17,9 @@ internal static class PosSettings
         (Environment.GetEnvironmentVariable("PARKIR_DEVICE_ID") ??
             Environment.GetEnvironmentVariable("PARKIR_GATE_ID") ??
             "GATE-OUT-01").Trim().ToUpperInvariant();
+
+    public static string GateId =>
+        (Environment.GetEnvironmentVariable("PARKIR_GATE_ID") ??
+            Environment.GetEnvironmentVariable("PARKIR_DEVICE_ID") ??
+            "GATE-OUT-01").Trim().ToUpperInvariant();
 }

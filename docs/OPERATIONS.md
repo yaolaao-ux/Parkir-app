@@ -46,7 +46,7 @@ DATABASE_URL='postgresql://user:pass@db-host:5432/parkir_restore' \
 bash tools/restore-postgres.sh backups/parkir-YYYYMMDDTHHMMSSZ.dump
 ```
 
-Setelah restore, verifikasi jumlah transaksi, relasi member/transaksi, sequence, index, dan total revenue terhadap sumber. Catat RPO/RTO aktual.
+Setelah restore, verifikasi jumlah transaksi, relasi member/transaksi, sequence, index, dan total revenue terhadap sumber. Catat RPO/RTO aktual. Script menolak database yang tidak berakhiran `_restore`/`_test`; flag `PARKIR_ALLOW_NON_TEST_RESTORE=YES` hanya untuk darurat yang disetujui. Verifikasi checksum otomatis jika file `.sha256` tersedia.
 
 ## 5. POS offline dan antrean
 

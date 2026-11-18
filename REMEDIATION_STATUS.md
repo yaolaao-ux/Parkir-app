@@ -703,3 +703,25 @@ Gelombang 7 — Integrasi perangkat dan pilot readiness: wiring/device mapping, 
 ## Rekomendasi
 
 Lakukan bench test `docs/HARDWARE_TEST_PLAN.md`, selesaikan ADR Gate-Out, jalankan CI/restore drill di staging, lalu isi `docs/PILOT_READINESS.md` dan minta persetujuan pemilik sistem.
+
+---
+
+# Tindak Lanjut Audit (19 November 2026)
+
+Perubahan pada branch `fix/audit-followups`:
+
+- **AUD-06:** `PosSettings.GateId` dipisahkan dari `PosSettings.DeviceId`; checkout/gate event memakai `PARKIR_GATE_ID`, autentikasi/heartbeat memakai `PARKIR_DEVICE_ID`. Regression test menambahkan pemisahan ini.
+- **AUD-08:** POS menolak checkout jika heartbeat menerima `401` dari kredensial perangkat; status UI “Kredensial perangkat ditolak”.
+- **AUD-09:** `JwtBearerEvents.OnTokenValidated` memeriksa `users.is_active` pada setiap request JWT; token user yang dinonaktifkan tidak lagi berlaku sampai expiry.
+- **AUD-04:** firmware tidak lagi menyimpan device key sebagai konstanta source; key disimpan di NVS melalui `SET_DEVICE_KEY=...` dan tidak ditampilkan.
+- **AUD-10:** `Security:TrustProxyHeaders` dan `UseForwardedHeaders` ditambahkan untuk reverse proxy TLS; dokumentasi env diperbarui.
+- **AUD-11/AUD-12:** restore menolak database non-`_restore`/`_test` kecuali flag darurat, memverifikasi checksum, dan backup memakai `umask 077`.
+- Regression test: **27/27 PASS**; API/POS build **0 warning/error**.
+
+## Masih terbuka
+
+- AUD-01: gate-in masih membuka palang setelah `PRINT_SENT` tanpa bukti cetak fisik; membutuhkan printer feedback atau prosedur operator.
+- AUD-02: ADR/safety hardware dan HIL test belum dijalankan.
+- AUD-03: integration test PostgreSQL untuk auth/device/anti-passback/concurrency belum ada; CI hanya schema smoke.
+- AUD-05: upgrade API memutus perangkat lama sampai credential per-device diprovision.
+- AUD-07: expiry/ACK command gate belum memiliki worker/alarm.

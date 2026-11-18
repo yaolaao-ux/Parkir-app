@@ -13,8 +13,6 @@ constexpr char WIFI_PASSWORD[] = "ganti-password";
 constexpr char API_URL[] = "http://192.168.1.10:5080/api/entries";
 constexpr char API_MEDIA_URL[] = "http://192.168.1.10:5080/api/media/entries";
 constexpr char API_HEARTBEAT_URL[] = "http://192.168.1.10:5080/api/devices/heartbeat";
-// Isi dengan credential unik yang diterbitkan admin untuk gate ini.
-constexpr char API_KEY[] = "ganti-device-api-key";
 constexpr char CAMERA_SNAPSHOT_URL[] = "http://192.168.1.60/snapshot.jpg";
 constexpr char DEFAULT_GATE_ID[] = "GATE-IN-01";
 constexpr char DEVICE_NAME[] = "Gate Masuk 01";
@@ -36,6 +34,7 @@ constexpr uint32_t HEARTBEAT_INTERVAL_MS = 20000;
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
 Preferences preferences;
 String gateId;
+String deviceApiKey;
 String pendingEntryKey;
 
 bool gateIsOpen = false;
@@ -50,7 +49,9 @@ uint32_t wifiRetryDelayMs = 1000;
 
 void addDeviceHeaders(HTTPClient &http) {
   http.addHeader("X-Device-Id", gateId);
-  http.addHeader("X-API-Key", API_KEY);
+  if (deviceApiKey.length() > 0) {
+    http.addHeader("X-API-Key", deviceApiKey);
+  }
 }
 
 void ensureWifi() {
@@ -71,7 +72,7 @@ void ensureWifi() {
 }
 
 bool reportPrintStatus(const String &ticketId, const char *status, const String &detail) {
-  if (WiFi.status() != WL_CONNECTED) {
+  if (WiFi.status() != WL_CONNECTED || deviceApiKey.length() == 0) {
     return false;
   }
 
@@ -239,6 +240,10 @@ bool createEntry(const String &rfidUid, const String &idempotencyKey, String &ti
     Serial.println("Server LAN tidak terhubung; palang tetap tertutup.");
     return false;
   }
+  if (deviceApiKey.length() == 0) {
+    Serial.println("Credential perangkat belum diset; jalankan SET_DEVICE_KEY=... via Serial.");
+    return false;
+  }
 
   String photoPath;
   if (!capturePhoto(photoPath)) {
@@ -290,7 +295,7 @@ bool createEntry(const String &rfidUid, const String &idempotencyKey, String &ti
 }
 
 void sendHeartbeat() {
-  if (WiFi.status() != WL_CONNECTED) {
+  if (WiFi.status() != WL_CONNECTED || deviceApiKey.length() == 0) {
     return;
   }
 
@@ -360,27 +365,49 @@ void processGateConfiguration() {
 
   String command = Serial.readStringUntil('\n');
   command.trim();
-  constexpr char prefix[] = "SET_GATE_ID=";
-  if (!command.startsWith(prefix)) {
-    return;
-  }
+  constexpr char gatePrefix[] = "SET_GATE_ID=";
+  constexpr char keyPrefix[] = "SET_DEVICE_KEY=";
 
-  String requestedId = command.substring(sizeof(prefix) - 1);
-  if (requestedId.length() == 0 || requestedId.length() > 20) {
-    Serial.println("Gate ID harus 1-20 karakter.");
-    return;
-  }
-  for (size_t index = 0; index < requestedId.length(); index++) {
-    const char character = requestedId[index];
-    if (!isAlphaNumeric(character) && character != '-' && character != '_' && character != '.') {
-      Serial.println("Gate ID hanya boleh berisi huruf, angka, titik, garis bawah, dan tanda hubung.");
+  if (command.startsWith(gatePrefix)) {
+    String requestedId = command.substring(sizeof(gatePrefix) - 1);
+    if (requestedId.length() == 0 || requestedId.length() > 20) {
+      Serial.println("Gate ID harus 1-20 karakter.");
       return;
     }
+    for (size_t index = 0; index < requestedId.length(); index++) {
+      const char character = requestedId[index];
+      if (!isAlphaNumeric(character) && character != '-' && character != '_' && character != '.') {
+        Serial.println("Gate ID hanya boleh berisi huruf, angka, titik, garis bawah, dan tanda hubung.");
+        return;
+      }
+    }
+
+    gateId = requestedId;
+    preferences.putString("gate_id", gateId);
+    Serial.printf("Gate ID tersimpan: %s. Pastikan ID ini sudah didaftarkan di dashboard.\n", gateId.c_str());
+    return;
   }
 
-  gateId = requestedId;
-  preferences.putString("gate_id", gateId);
-  Serial.printf("Gate ID tersimpan: %s. Pastikan ID ini sudah didaftarkan di dashboard.\n", gateId.c_str());
+  if (command.startsWith(keyPrefix)) {
+    String requestedKey = command.substring(sizeof(keyPrefix) - 1);
+    if (requestedKey.length() < 16 || requestedKey.length() > 200) {
+      Serial.println("Device key harus 16-200 karakter.");
+      return;
+    }
+    for (size_t index = 0; index < requestedKey.length(); index++) {
+      if (isSpace(requestedKey[index])) {
+        Serial.println("Device key tidak boleh mengandung spasi.");
+        return;
+      }
+    }
+
+    deviceApiKey = requestedKey;
+    preferences.putString("device_api_key", deviceApiKey);
+    Serial.println("Device key tersimpan di NVS. Nilai tidak ditampilkan.");
+    return;
+  }
+
+  Serial.println("Perintah tidak dikenal. Gunakan SET_GATE_ID=... atau SET_DEVICE_KEY=...");
 }
 
 void setup() {
@@ -388,7 +415,11 @@ void setup() {
   Serial.setTimeout(100);
   preferences.begin("parkir-gate", false);
   gateId = preferences.getString("gate_id", DEFAULT_GATE_ID);
+  deviceApiKey = preferences.getString("device_api_key", "");
   Serial.printf("Gate ID aktif: %s\n", gateId.c_str());
+  if (deviceApiKey.length() == 0) {
+    Serial.println("PERINGATAN: device key belum diset. Jalankan SET_DEVICE_KEY=... via Serial Monitor.");
+  }
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(LOOP_SENSOR_PIN, INPUT_PULLUP);
   pinMode(GATE_RELAY_PIN, OUTPUT);

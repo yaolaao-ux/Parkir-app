@@ -12,6 +12,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../../pos/Parkir.Pos/CheckoutQueue.cs" Link="CheckoutQueue.cs" />
+    <Compile Include="../../pos/Parkir.Pos/PosSettings.cs" Link="PosSettings.cs" />
   </ItemGroup>
   <ItemGroup>
     <AssemblyAttribute Include="Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryContentRootAttribute">

@@ -2,6 +2,7 @@ using Npgsql;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
@@ -23,6 +24,14 @@ var jwtSigningKey = builder.Configuration["Security:JwtSigningKey"];
 if (string.IsNullOrWhiteSpace(jwtSigningKey) || Encoding.UTF8.GetByteCount(jwtSigningKey) < 32)
 {
     throw new InvalidOperationException("Security:JwtSigningKey wajib diisi minimal 32 byte.");
+}
+var trustProxyHeaders = builder.Configuration.GetValue("Security:TrustProxyHeaders", false);
+if (trustProxyHeaders)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    });
 }
 
 builder.Services.AddSingleton<BusinessClock>();
@@ -87,6 +96,33 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             RoleClaimType = System.Security.Claims.ClaimTypes.Role,
             ClockSkew = TimeSpan.FromSeconds(30)
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var userId = context.Principal?
+                    .FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!long.TryParse(userId, out var parsedUserId))
+                {
+                    context.Fail("Token tidak memiliki identitas user yang valid.");
+                    return;
+                }
+
+                try
+                {
+                    var authRepository = context.HttpContext.RequestServices.GetRequiredService<AuthRepository>();
+                    var isActive = await authRepository.IsActiveAsync(parsedUserId, context.HttpContext.RequestAborted);
+                    if (isActive != true)
+                    {
+                        context.Fail("Akun tidak aktif.");
+                    }
+                }
+                catch (NpgsqlException)
+                {
+                    context.Fail("Status akun tidak dapat diverifikasi.");
+                }
+            }
+        };
     })
     .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
         ApiKeyAuthenticationHandler.SchemeName, _ => { });
@@ -130,6 +166,10 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
 }));
 if (app.Configuration.GetValue("Security:RequireHttps", false))
 {
+    if (trustProxyHeaders)
+    {
+        app.UseForwardedHeaders();
+    }
     app.UseHsts();
     app.UseHttpsRedirection();
 }

@@ -136,6 +136,23 @@ var tests = new (string Name, Action Run)[]
         AssertTrue(hash != key);
         AssertTrue(DeviceKeyHasher.GenerateKey() != DeviceKeyHasher.GenerateKey());
     }),
+    ("device id dan gate id POS dipisahkan", () =>
+    {
+        var oldDevice = Environment.GetEnvironmentVariable("PARKIR_DEVICE_ID");
+        var oldGate = Environment.GetEnvironmentVariable("PARKIR_GATE_ID");
+        try
+        {
+            Environment.SetEnvironmentVariable("PARKIR_DEVICE_ID", "CASHIER-POS-01");
+            Environment.SetEnvironmentVariable("PARKIR_GATE_ID", "GATE-OUT-02");
+            AssertEqual("CASHIER-POS-01", PosSettings.DeviceId);
+            AssertEqual("GATE-OUT-02", PosSettings.GateId);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PARKIR_DEVICE_ID", oldDevice);
+            Environment.SetEnvironmentVariable("PARKIR_GATE_ID", oldGate);
+        }
+    }),
     ("lifecycle tiket hanya mengizinkan transisi yang aman", () =>
     {
         AssertTrue(TicketLifecycle.IsPrintTransitionAllowed("PENDING", "PRINT_SENT"));
