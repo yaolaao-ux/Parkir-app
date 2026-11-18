@@ -28,3 +28,9 @@ jobs:
 
       - name: Run regression tests
         run: dotnet run --project tests/Parkir.Tests/Parkir.Tests.csproj --configuration Release
+
+      - name: Check vulnerable NuGet packages
+        run: dotnet list backend/Parkir.Api/Parkir.Api.csproj package --vulnerable --include-transitive
+
+      - name: Check vulnerable POS packages
+        run: dotnet list pos/Parkir.Pos/Parkir.Pos.csproj package --vulnerable --include-transitive

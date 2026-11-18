@@ -13,5 +13,8 @@ backend/Parkir.Api/storage/images/
 secrets/
 *.db
 *.sqlite
+*.dump
+*.dump.sha256
+backups/
 *.user
 *.suo

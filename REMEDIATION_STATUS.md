@@ -570,3 +570,79 @@ Gelombang 5 — Membership, tarif, timezone, dan reporting: anti-passback non-me
 ## Rekomendasi gelombang berikutnya
 
 Gelombang 6 — QA, CI, monitoring, backup: integration/E2E tests, dependency/secret scan, structured logging, health alert, dan restore drill.
+
+---
+
+# Gelombang 6 — QA, CI, monitoring, dan backup
+
+## Baseline
+
+- Branch kerja: `test/production-readiness`
+- Commit awal: `71c9406` (`fix: formalize membership and report reconciliation`)
+- Commit akhir: branch head setelah commit Gelombang 6 (lihat `git log -1 --oneline`)
+- Working tree saat baseline: bersih
+- Migration baru: tidak ada (workflow/smoke test memakai migration yang ada)
+
+## Perubahan yang dilakukan
+
+| File | Ringkasan |
+|---|---|
+| `.github/workflows/database.yml` | CI PostgreSQL 16: apply `schema.sql`, semua migration dua kali, lalu smoke check invariant. |
+| `database/smoke.sql` | Assertion tabel/index/kolom penting (`device_credentials`, `gate_commands`, anti-passback, snapshot member, print status). |
+| `.github/workflows/tests.yml` | Menambahkan dependency vulnerability scan untuk API dan POS. |
+| `tools/backup-postgres.sh` | Backup custom-format + SHA-256 + retensi. |
+| `tools/restore-postgres.sh` | Restore dengan konfirmasi eksplisit dan `--clean --if-exists`. |
+| `docs/OPERATIONS.md` | Runbook deploy, monitoring, backup, restore drill, POS offline, gate/printer, dan recovery. |
+| `README.md` | Menautkan runbook serta menjelaskan CI/smoke test. |
+| `.gitignore` | Mengabaikan dump backup dan direktori backup. |
+
+## Database
+
+- Migration: tidak ada perubahan skema.
+- Dampak data: tidak ada.
+- Cara menjalankan smoke: workflow `Database smoke` pada PR/push.
+- Rollback: tidak applicable.
+
+## Pengujian
+
+| Test | Perintah | Hasil |
+|---|---|---|
+| Build API Release | `dotnet build backend/Parkir.Api/Parkir.Api.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Build POS WPF Release | `dotnet build pos/Parkir.Pos/Parkir.Pos.csproj --configuration Release` | **PASS** — 0 warning, 0 error |
+| Regression tests | `dotnet run --project tests/Parkir.Tests/Parkir.Tests.csproj --configuration Release` | **PASS** — 26/26 |
+| Secret scan | `bash tools/scan-secrets.sh` | **PASS** |
+| Database smoke PostgreSQL | workflow `database.yml` | **NOT RUN lokal** — server database tidak tersedia; workflow siap dijalankan CI |
+| Dependency vulnerability scan | workflow `tests.yml` | **NOT RUN lokal** — membutuhkan NuGet/CI |
+| Backup/restore drill | scripts + `docs/OPERATIONS.md` | **NOT RUN** — membutuhkan database dan storage terpisah |
+| WPF runtime | belum dijalankan | **NOT RUN** — environment Linux |
+
+## Acceptance criteria Gelombang 6
+
+| Kriteria | Status |
+|---|---|
+| CI build + regression test | **PASS lokal**; workflow CI tersedia |
+| CI migration/schema smoke | **READY**, belum dijalankan pada CI nyata |
+| Dependency/secret scan | **PARTIAL** — secret scan lokal PASS; dependency scan belum dijalankan |
+| Structured logging/correlation | **PASS** — correlation ID dan health check sudah ada |
+| Backup dan restore documented | **PASS dokumentasi**; restore drill belum |
+| Monitoring perangkat/queue | **PARTIAL** — status heartbeat/queue ada; alert eksternal belum |
+| Runbook operasional | **PASS dokumentasi**; perlu validasi operator |
+
+## Risiko tersisa
+
+1. Workflow `Database smoke` dan backup/restore belum dieksekusi pada lingkungan nyata.
+2. Belum ada sistem alert eksternal (email/Slack/PagerDuty); monitoring masih health/status manual.
+3. Backup perlu disimpan terenkripsi di lokasi terpisah dan diuji restore.
+4. WPF dan perangkat fisik tetap belum diuji.
+5. Dependency scan CI dapat berubah mengikuti database advisory NuGet.
+
+## Tindakan yang membutuhkan persetujuan
+
+- Menjalankan workflow CI/staging dan restore drill.
+- Menentukan platform alert dan retensi log/backup.
+- Menyediakan akun/storage backup terpisah.
+- Menjadwalkan uji WPF dan hardware pada Gelombang 7.
+
+## Rekomendasi gelombang berikutnya
+
+Gelombang 7 — Integrasi perangkat dan pilot readiness: wiring/device mapping, Gate-In/Gate-Out bench test, command/feedback, hardware-in-the-loop, checklist keselamatan, dan pilot checklist.

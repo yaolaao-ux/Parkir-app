@@ -138,7 +138,9 @@ Test tarif, timezone, kontrak JSON, migrasi antrean SQLite, dan auth endpoint pe
 dotnet run --project tests/Parkir.Tests/Parkir.Tests.csproj
 ```
 
-Test berjalan sebagai runner konsol agar tidak bergantung pada VSTest. CI juga menjalankan build API dan test ini pada setiap push/PR.
+Test berjalan sebagai runner konsol agar tidak bergantung pada VSTest. CI juga menjalankan build API, dependency scan, secret scan, dan smoke test schema PostgreSQL.
+
+Panduan operasi, monitoring, backup, restore drill, dan recovery ada di [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
 
 ## 4. POS kasir WPF
 
